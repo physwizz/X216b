@@ -736,7 +736,7 @@ static void wtchg_get_batt_cycle(struct wt_chg *chg)
 
 static void wtchg_set_batt_cycle(struct wt_chg *chg)
 {
-	int ret = wtchg_write_iio_prop(chg, BMS, BATT_QG_BATTERY_CYCLE, chg->batt_cycle);
+	int ret = wtchg_write_iio_prop(chg, BMS, BATT_QG_BATTERY_CYCLE, chg->batt_cycle);
 	dev_info(chg->dev, "%s: chg->cycle= %d, ret = %d\n", __func__, chg->batt_cycle, ret);
 }
 
@@ -3968,7 +3968,7 @@ static int wtchg_batt_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = true;
-		break;
+		break;
 	//PLM230714-05698,23/07/25,gudi.wt,no iocn in power off charging
 #ifdef CONFIG_QGKI_BUILD
 	case POWER_SUPPLY_PROP_ONLINE:

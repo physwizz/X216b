@@ -1577,7 +1577,7 @@ static int cx25890h_init_device(struct cx25890h_device *cx_chg)
 
 	cx25890h_init_charge(cx_chg);
 	/*common initialization*/
-	cx25890h_disable_watchdog_timer(cx_chg, 1);
+	cx25890h_disable_watchdog_timer(cx_chg, 1);
 	cx25890h_ship_mode_delay_enable(cx_chg, false);
 	cx25890h_set_otg(cx_chg, false);
 	cx25890h_set_input_suspend(cx_chg, false);
