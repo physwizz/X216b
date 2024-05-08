@@ -146,3 +146,16 @@ x509.genkey
 
 # Clang's compilation database file
 /compile_commands.json
+
+# For local/cloud building from inside the source
+toolchain/
+out/
+**/*.tgz
+**/*.tar.gz
+**/build.log
+modulebuild
+kernelbuild
+**/*.zip
+**/Image
+**/Image.gz
+**/*.ko
