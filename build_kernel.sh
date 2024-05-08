@@ -43,8 +43,8 @@ export CLANG_TOOL_PATH=$(pwd)/toolchain/clang/host/linux-x86/clang-r416183b/bin
 export PATH=${CLANG_TOOL_PATH}:${PATH//"${CLANG_TOOL_PATH}:"}
 export LD_LIBRARY_PATH=$(pwd)/toolchain/clang/host/linux-x86/clang-r416183b/lib64
 
-make -C $(pwd) O=$(pwd)/out CC=clang LLVM=1 ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- vendor/gta9p_eur_openx_defconfig
-make -C $(pwd) O=$(pwd)/out CC=clang LLVM=1 ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- -j$(nproc --all)
+make -C $(pwd) O=$(pwd)/out CC=clang LLVM=1 ARCH=arm64 DTC_EXT=$(pwd)/tools/dtc CLANG_TRIPLE=aarch64-linux-gnu- vendor/gta9p_eur_openx_defconfig
+make -C $(pwd) O=$(pwd)/out CC=clang LLVM=1 ARCH=arm64 DTC_EXT=$(pwd)/tools/dtc CLANG_TRIPLE=aarch64-linux-gnu- -j$(nproc --all)
 
 # Final Build
 mkdir -p kernelbuild
