@@ -32,6 +32,7 @@
 #include <linux/hiddev.h>
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
+#include <linux/uhid.h>
 
 #include "hid-ids.h"
 
@@ -258,6 +259,7 @@ static int hid_add_field(struct hid_parser *parser, unsigned report_type, unsign
 {
 	struct hid_report *report;
 	struct hid_field *field;
+	unsigned int max_buffer_size = HID_MAX_BUFFER_SIZE;
 	unsigned int usages;
 	unsigned int offset;
 	unsigned int i;
@@ -288,8 +290,11 @@ static int hid_add_field(struct hid_parser *parser, unsigned report_type, unsign
 	offset = report->size;
 	report->size += parser->global.report_size * parser->global.report_count;
 
+	if (IS_ENABLED(CONFIG_UHID) && parser->device->ll_driver == &uhid_hid_driver)
+		max_buffer_size = UHID_DATA_MAX;
+
 	/* Total size check: Allow for possible report index byte */
-	if (report->size > (HID_MAX_BUFFER_SIZE - 1) << 3) {
+	if (report->size > (max_buffer_size - 1) << 3) {
 		hid_err(parser->device, "report is too long\n");
 		return -1;
 	}
@@ -1544,6 +1549,42 @@ static void hid_input_field(struct hid_device *hid, struct hid_field *field,
 	if (!value)
 		return;
 
+// +P86801AA1 lihesong.wt,add,20230816,add special key
+	if(data[0]==0xc9&&data[1]==0x2) {
+
+		input_event(field->hidinput->input, EV_KEY, 713, 1);
+		input_sync(field->hidinput->input);
+		input_event(field->hidinput->input, EV_KEY, 713, 0);
+		input_sync(field->hidinput->input);
+		return ;
+	}
+	if(data[0]==0xbd&&data[1]==0x2) {
+
+		input_event(field->hidinput->input, EV_KEY, 701, 1);
+		input_sync(field->hidinput->input);
+		input_event(field->hidinput->input, EV_KEY, 701, 0);
+		input_sync(field->hidinput->input);
+		return ;
+	}
+	if(data[0]==0xc2&&data[1]==0x2) {
+		input_event(field->hidinput->input, EV_KEY, 706, 1);
+		input_sync(field->hidinput->input);
+		input_event(field->hidinput->input, EV_KEY, 706, 0);
+		input_sync(field->hidinput->input);
+		return ;
+	}
+// -P86801AA1 lihesong.wt,add,20230816,add special key
+
+// +P86801AA1 lihesong.wt,add,20230819,add special key  Fn + backspace
+	if(data[0]==0x99) {
+		input_event(field->hidinput->input, EV_KEY, 99, 1);
+		input_sync(field->hidinput->input);
+		input_event(field->hidinput->input, EV_KEY, 99, 0);
+		input_sync(field->hidinput->input);
+		return ;
+	}
+// -P86801AA1 lihesong.wt,add,20230819,add special key Fn + backspace
+
 	for (n = 0; n < count; n++) {
 
 		value[n] = min < 0 ?
@@ -1745,6 +1786,7 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, u32 size,
 	struct hid_report_enum *report_enum = hid->report_enum + type;
 	struct hid_report *report;
 	struct hid_driver *hdrv;
+	int max_buffer_size = HID_MAX_BUFFER_SIZE;
 	unsigned int a;
 	u32 rsize, csize = size;
 	u8 *cdata = data;
@@ -1761,10 +1803,13 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, u32 size,
 
 	rsize = hid_compute_report_size(report);
 
-	if (report_enum->numbered && rsize >= HID_MAX_BUFFER_SIZE)
-		rsize = HID_MAX_BUFFER_SIZE - 1;
-	else if (rsize > HID_MAX_BUFFER_SIZE)
-		rsize = HID_MAX_BUFFER_SIZE;
+	if (IS_ENABLED(CONFIG_UHID) && hid->ll_driver == &uhid_hid_driver)
+		max_buffer_size = UHID_DATA_MAX;
+
+	if (report_enum->numbered && rsize >= max_buffer_size)
+		rsize = max_buffer_size - 1;
+	else if (rsize > max_buffer_size)
+		rsize = max_buffer_size;
 
 	if (csize < rsize) {
 		dbg_hid("report %d is too short, (%d < %d)\n", report->id,
@@ -1964,6 +2009,12 @@ int hid_connect(struct hid_device *hdev, unsigned int connect_mask)
 
 	/* Drivers with the ->raw_event callback set are not required to connect
 	 * to any other listener. */
+	 //+P230816-00963, caoxin2.wt, modify, 2023.08.18, resolve kernel panic
+	if (hdev->driver == NULL) {
+		hid_err(hdev, "%s:hdev->driver == NULL\n", __func__);
+		return -ENODEV;
+	}
+	//-P230816-00963, caoxin2.wt, modify, 2023.08.18, resolve kernel panic
 	if (!hdev->claimed && !hdev->driver->raw_event) {
 		hid_err(hdev, "device has no listeners, quitting\n");
 		return -ENODEV;

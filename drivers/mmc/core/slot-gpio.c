@@ -32,6 +32,16 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 	struct mmc_host *host = dev_id;
 	struct mmc_gpio *ctx = host->slot.handler_priv;
 
+#if defined(CONFIG_SDC_QTI)
+	/* New card is not corrupted */
+	host->corrupted_card = false;
+#endif
+
+#if IS_ENABLED(CONFIG_SEC_MMC_FEATURE)
+	if (mmc_gpio_get_cd(host) == 0)
+		host->failed_init = false;
+#endif
+
 	host->trigger_card_event = true;
 	mmc_detect_change(host, msecs_to_jiffies(ctx->cd_debounce_delay_ms));
 

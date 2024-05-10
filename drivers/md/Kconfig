@@ -538,17 +538,6 @@ config DM_VERITY_VERIFY_ROOTHASH_SIG
 
 	  If unsure, say N.
 
-config DM_VERITY_AVB
-	tristate "Support AVB specific verity error behavior"
-	depends on DM_VERITY
-	---help---
-	  Enables Android Verified Boot platform-specific error
-	  behavior. In particular, it will modify the vbmeta partition
-	  specified on the kernel command-line when non-transient error
-	  occurs (followed by a panic).
-
-	  If unsure, say N.
-
 config DM_VERITY_FEC
 	bool "Verity forward error correction support"
 	depends on DM_VERITY
@@ -639,6 +628,14 @@ config DM_BOW
 	  changes using free blocks identified by issuing a trim command.
 	  This can then be restored by running a command line utility,
 	  or committed by simply replacing the target.
+
+	  If unsure, say N.
+
+config WT_DM_VERITY_CHECK
+	tristate "WT feature that system should panic when FEC recovery fails."
+	---help---
+	  The WT_SECUREBOOT_FUSE_STATE config is a method that check dm-verity corrupt issue.
+	  If some data has corrupt of the machine, we will trigger panic and print corrupt data.
 
 	  If unsure, say N.
 

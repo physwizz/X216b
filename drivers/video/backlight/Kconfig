@@ -289,6 +289,16 @@ config BACKLIGHT_PM8941_WLED
 	  If you have the Qualcomm PM8941, say Y to enable a driver for the
 	  WLED block.
 
+config BACKLIGHT_QCOM_SPMI_WLED
+	tristate "Qualcomm Technologies, Inc. WLED Driver"
+	select REGMAP
+	help
+	  If you have the Qualcomm Technologies, Inc. WLED used for backlight
+	  control, say Y to enable a driver for the  WLED block. This driver
+	  provides the interface to the display driver to adjust the brightness
+	  of the display backlight. This supports PMI8998, PM8150L, PM6150L
+	  currently.
+
 config BACKLIGHT_SAHARA
 	tristate "Tabletkiosk Sahara Touch-iT Backlight Driver"
 	depends on X86
@@ -457,5 +467,11 @@ config BACKLIGHT_RAVE_SP
 	  Support for backlight control on RAVE SP device.
 
 endif # BACKLIGHT_CLASS_DEVICE
+
+config LCD_BIAS_OCP2138
+	tristate "Enable OCP2138 driver"
+	depends on I2C
+	help
+	define ocp2138 driver config to enable ocp2138 driver.
 
 endmenu

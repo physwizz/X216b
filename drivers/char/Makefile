@@ -6,12 +6,16 @@
 obj-y				+= mem.o random.o
 obj-$(CONFIG_TTY_PRINTK)	+= ttyprintk.o
 obj-y				+= misc.o
+obj-$(CONFIG_EARJACK)           += earjack_class.o
 obj-$(CONFIG_ATARI_DSP56K)	+= dsp56k.o
 obj-$(CONFIG_VIRTIO_CONSOLE)	+= virtio_console.o
 obj-$(CONFIG_RAW_DRIVER)	+= raw.o
 obj-$(CONFIG_MSPEC)		+= mspec.o
 obj-$(CONFIG_UV_MMTIMER)	+= uv_mmtimer.o
 obj-$(CONFIG_IBM_BSR)		+= bsr.o
+obj-$(CONFIG_SGI_MBCS)		+= mbcs.o
+obj-$(CONFIG_BFIN_OTP)		+= bfin-otp.o
+obj-$(CONFIG_MSM_SMD_PKT)       += msm_smd_pkt.o
 
 obj-$(CONFIG_PRINTER)		+= lp.o
 
@@ -51,4 +55,17 @@ js-rtc-y = rtc.o
 
 obj-$(CONFIG_XILLYBUS)		+= xillybus/
 obj-$(CONFIG_POWERNV_OP_PANEL)	+= powernv-op-panel.o
+frpc-adsprpc-objs		+= adsprpc.o
+ifdef CONFIG_COMPAT
+  frpc-adsprpc-objs		+= adsprpc_compat.o
+endif
+obj-$(CONFIG_MSM_ADSPRPC)	+= frpc-adsprpc.o
+vfastrpc-objs			+= virtio_fastrpc.o
+ifdef CONFIG_COMPAT
+  vfastrpc-objs			+= adsprpc_compat.o
+endif
+obj-$(CONFIG_VIRTIO_FASTRPC)	+= vfastrpc.o
 obj-$(CONFIG_ADI)		+= adi.o
+obj-$(CONFIG_MSM_RDBG)		+= rdbg.o
+obj-$(CONFIG_MSM_FASTCVPD)	+= fastcvpd.o
+obj-$(CONFIG_VIRTIO_EAVB)       += virtio_eavb/
