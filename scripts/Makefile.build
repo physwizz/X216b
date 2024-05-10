@@ -2,6 +2,10 @@
 # ==========================================================================
 # Building
 # ==========================================================================
+# +P86801AA1-1797,wangkangmin.wt,ADD,20230626, add for gki build
+KBUILD_SYMTYPES := true
+KBUILD_PRESERVE := true
+# -P86801AA1-1797,wangkangmin.wt,ADD,20230626, add for gki build
 
 src := $(obj)
 
@@ -46,6 +50,11 @@ include scripts/Makefile.lib
 # Do not include host rules unless needed
 ifneq ($(hostprogs-y)$(hostprogs-m)$(hostlibs-y)$(hostlibs-m)$(hostcxxlibs-y)$(hostcxxlibs-m),)
 include scripts/Makefile.host
+endif
+
+# Do not include host rules unless needed
+ifneq ($(dtbo-y),)
+include scripts/Makefile.dtbo
 endif
 
 ifndef obj
