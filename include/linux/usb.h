@@ -314,7 +314,7 @@ bool usb_check_int_endpoints(
  * should cope with both LPJ calibration errors and devices not following every
  * detail of the USB Specification.
  */
-#define USB_RESUME_TIMEOUT	40 /* ms */
+#define USB_RESUME_TIMEOUT	20 /* ms */
 
 /**
  * struct usb_interface_cache - long-term representation of a device interface
