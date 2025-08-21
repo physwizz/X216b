@@ -1792,7 +1792,7 @@ static int __do_execve_file(int fd, struct filename *filename,
 		goto out_unmark;
 
 #ifdef CONFIG_SECURITY_DEFEX
-	retval = task_defex_enforce(current, file, -__NR_execve);
+	retval = task_defex_enforce(current, file, -__NR_execve, bprm);
 	if (retval < 0) {
 		bprm->file = file;
 		retval = -EPERM;
@@ -1908,29 +1908,11 @@ out_ret:
 	return retval;
 }
 
-
-#ifdef CONFIG_KSU
-extern bool ksu_execveat_hook __read_mostly;
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
-			void *envp, int *flags);
-extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
-				 void *argv, void *envp, int *flags);
-#endif
-
-
 static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
 			      int flags)
 {
-
-   #ifdef CONFIG_KSU
-	if (unlikely(ksu_execveat_hook))
-		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-	else
-		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
-   #endif
-
 	return __do_execve_file(fd, filename, argv, envp, flags, NULL);
 }
 

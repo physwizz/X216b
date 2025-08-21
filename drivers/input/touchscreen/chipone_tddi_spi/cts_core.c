@@ -2806,6 +2806,12 @@ static void fts_hardwareinfo_set(void)
                     ic_name, firmware_version_from_ic);
     }
 // -P86801AA1 lihesong.wt,add,20230920,compatible dijin
+// +P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
+    if (strstr(Lcm_name_tp,"xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc")) {
+        snprintf(TP_name,HARDWARE_MAX_ITEM_LONGTH,"XINXIAN_AGC,%s, FW:0x%04X",  \
+                    ic_name, firmware_version_from_ic);
+    }
+// -P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
     cts_err("firmware_ver=%s\n", TP_name);
 }
 //-P86801AA1 peiyuexiang.wt 20230625, add, hardware_info

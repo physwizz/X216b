@@ -2,9 +2,11 @@ ccflags-y += \
 		-DAW_HAVE_SNK \
 		-DAW_HAVE_SRC \
 		-DAW_HAVE_DRP \
+		-DAW_HAVE_VBUS_ONLY \
 		-DAW_HAVE_ACCMODE \
 		-DAW_HAVE_EXT_MSG \
 		-DAW_HAVE_VDM \
+		-DAW_DEBUG_CODE \
 		-DAW_HAVE_DP
 
 obj-$(CONFIG_AW35615_PD) += aw35615_whole.o

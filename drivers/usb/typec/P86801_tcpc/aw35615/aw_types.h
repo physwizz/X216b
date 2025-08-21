@@ -85,7 +85,7 @@ typedef unsigned long long AW_U64;
 #define AWINIC_DEBUG
 #ifdef AWINIC_DEBUG
 #define AWINIC_LOG_NAME "AW35615"
-#define AW_LOG(format, arg...)	 pr_info("[%s] %s %d: " format, AWINIC_LOG_NAME, \
+#define AW_LOG(format, arg...)	 pr_err("[%s] %s %d: " format, AWINIC_LOG_NAME, \
 		 __func__, __LINE__, ##arg)
 #else
 #define AW_LOG(format, arg...)

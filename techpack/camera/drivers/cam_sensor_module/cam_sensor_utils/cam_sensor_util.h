@@ -43,6 +43,7 @@
 #define CAMERA_REAR_W11_GC08A3     0x08a3
 #define CAM_VOLTAGE_W11_1300000    1300000
 #define CAM_VOLTAGE_W11_1200000    1200000
+#define CAMERA_FRONT_W11_GC05A2     0x05a2
 
 struct cam_sensor_id_stats {
 	int cam_id;

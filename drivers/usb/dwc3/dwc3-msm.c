@@ -48,6 +48,7 @@
 #ifdef CONFIG_QGKI_MSM_BOOT_TIME_MARKER
 #include <soc/qcom/boot_stats.h>
 #endif
+#include <linux/usb_notify.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -424,6 +425,9 @@ struct extcon_nb {
 
 #define PM_QOS_SAMPLE_SEC	2
 #define PM_QOS_THRESHOLD	400
+
+#undef dev_dbg
+#define dev_dbg dev_err
 
 struct dwc3_msm {
 	struct device *dev;
@@ -4333,9 +4337,21 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
 			return -EINVAL;
 		}
 
+#ifdef CONFIG_USB_NOTIFIER
+		if (is_blocked(get_otg_notify(), NOTIFY_BLOCK_TYPE_CLIENT)) {
+			dev_err(dev, "blocked peripheral mode\n");
+			return -EINVAL;
+		}
+#endif
 		mdwc->vbus_active = true;
 		mdwc->id_state = DWC3_ID_FLOAT;
 	} else if (sysfs_streq(buf, "host")) {
+#ifdef CONFIG_USB_NOTIFIER
+		if (is_blocked(get_otg_notify(), NOTIFY_BLOCK_TYPE_HOST)) {
+			dev_err(dev, "blocked host mode\n");
+			return -EINVAL;
+		}
+#endif
 		mdwc->vbus_active = false;
 		mdwc->id_state = DWC3_ID_GROUND;
 	} else {
@@ -5093,6 +5109,10 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	device_create_file(&pdev->dev, &dev_attr_mode);
 	device_create_file(&pdev->dev, &dev_attr_speed);
 	device_create_file(&pdev->dev, &dev_attr_bus_vote);
+
+#if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
+	enable_usb_notify();
+#endif
 
 	return 0;
 

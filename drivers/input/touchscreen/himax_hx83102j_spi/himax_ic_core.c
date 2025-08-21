@@ -1024,6 +1024,9 @@ void himax_mcu_read_FW_ver(void)
 	if (strstr(Lcm_name_tp,"lide_hx83102j_wt_dsi_vdo_90hz_hsd")) {
 		snprintf(TP_name,HARDWARE_MAX_ITEM_LONGTH,"IC:hx83102j, Module:lide, FW:0x%04x",
 			hx_s_ic_data->vendor_touch_cfg_ver);
+	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc")) {
+		snprintf(TP_name,HARDWARE_MAX_ITEM_LONGTH,"IC:hx83102j, Module:starry_agc, FW:0x%04x",
+			hx_s_ic_data->vendor_touch_cfg_ver);
 	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt")) {
 		snprintf(TP_name,HARDWARE_MAX_ITEM_LONGTH,"IC:hx83102j, Module:starry, FW:0x%04x",
 			hx_s_ic_data->vendor_touch_cfg_ver);
@@ -2050,6 +2053,11 @@ void himax_mcu_touch_information(void)
 			hx_s_ic_data->rx_num = FIX_HX_RX_NUM;
 		if (hx_s_ic_data->tx_num == 0xFFFFFFFF)
 			hx_s_ic_data->tx_num = FIX_HX_TX_NUM;
+	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc")){
+		if (hx_s_ic_data->rx_num == 0xFFFFFFFF)
+			hx_s_ic_data->rx_num = FIX_HX_RX_NUM_MDT_AGC;
+		if (hx_s_ic_data->tx_num == 0xFFFFFFFF)
+			hx_s_ic_data->tx_num = FIX_HX_TX_NUM_MDT_AGC;
 	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt")){
 		if (hx_s_ic_data->rx_num == 0xFFFFFFFF)
 			hx_s_ic_data->rx_num = FIX_HX_RX_NUM_MDT;

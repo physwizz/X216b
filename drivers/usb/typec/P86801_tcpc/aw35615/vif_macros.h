@@ -99,7 +99,14 @@ extern "C" {
 /******************************************************************************
  * GLOBAL VARIABLES
  ******************************************************************************/
-extern AW_U8 gCountry_codes[];
+#ifdef AW_HAVE_EXT_MSG
+static const AW_U8 gCountry_codes[6] = {
+	2, 0, /* 2-byte Number of country codes */
+
+	/* country codes follow */
+	'U', 'S', 'C', 'N'
+};
+#endif
 
 void VIF_InitializeSrcCaps(doDataObject_t *src_caps);
 void VIF_InitializeSnkCaps(doDataObject_t *snk_caps);

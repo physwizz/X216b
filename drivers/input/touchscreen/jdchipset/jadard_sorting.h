@@ -5,7 +5,7 @@
 #include "jadard_module.h"
 #include <linux/rtc.h>
 
-#define JD_RSLT_OUT_PATH "/sdcard/"
+#define JD_RSLT_OUT_PATH "data/vendor/fac_sources/"    //"/sdcard/"
 #define JD_RSLT_OUT_FILE "jd_sorting_result_"
 
 #if (JD_PRODUCT_TYPE == 1)
@@ -36,7 +36,6 @@ static uint8_t *GET_RAWDATA;
 #define JD_SORTING_THRESHOLD_DBG        0
 #define JD_SORTING_NOISE_DIFF_MIN       0
 #define JD_SORTING_LPWUG_CHECK          0
-#define JD_SORTING_NORMALIDLE_CHECK     0
 
 char *jd_action_item_name[] = {
     "Open_Check",

@@ -54,6 +54,8 @@ bool himax_gestrue_status;
 EXPORT_SYMBOL(himax_gestrue_status);
 bool chipone_gestrue_status;
 EXPORT_SYMBOL(chipone_gestrue_status);
+bool jd_gestrue_status;
+EXPORT_SYMBOL(jd_gestrue_status);
 // -P86801AA1 peiyuexiang.wt,add,20230511,add double_click
 /*+P86801AA1, wangcong.wt, ADD, 2023/08/11, add register code change while fps change*/
 extern volatile bool panel_initialized_flag;
@@ -63,6 +65,7 @@ extern volatile bool panel_initialized_flag;
 extern char lcm_serialnum[HARDWARE_MAX_ITEM_LONGTH];
 extern struct dsi_display *get_main_display(void);
 char serialnum_temp20[] = "11111111111111111111";
+char serialnum_temp21[] = "111111111111111111111";
 #endif
 //-,wangcong.wt,add,2023.8.28, add lcm_get_serialnum
 extern int esd_interval_time;
@@ -412,6 +415,11 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 		mdelay(1);
 		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
 		mdelay(2);
+	}else if(!strcmp("starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+	{
+		mdelay(1);
+		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
+		mdelay(2);
 	}else if(!strcmp("dsbj_ft8203_wt_dsi_vdo_90hz_inx",panel->name))
 	{
 		mdelay(3);
@@ -437,7 +445,17 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 		mdelay(1);
 		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
 		mdelay(10);
+	}else if(!strcmp("xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+	{
+		mdelay(1);
+		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
+		mdelay(10);
 	}else if(!strcmp("djn_icnl9951r_wt_dsi_vdo_90hz_boe",panel->name))
+	{
+		mdelay(1);
+		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
+		mdelay(10);
+	}else if(!strcmp("xinxian_jd9366ts_wt_dsi_vdo_90hz_csot",panel->name))
 	{
 		mdelay(1);
 		rc= ocp2138_BiasPower_enable(LCM_LDO_VOL_6V0, LCM_LDO_VOL_6V0, 3);
@@ -514,9 +532,9 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
 #ifdef CONFIG_QGKI_BUILD
-	if ((himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status)&&(!is_shut_down)) {
+	if ((himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status || jd_gestrue_status)&&(!is_shut_down)) {
 #else
-	if (himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status) {
+	if (himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status || jd_gestrue_status) {
 #endif
 		pr_err("WT_LCD,dsi_panel_power_off not set reset low\n ");
 	} else {
@@ -536,6 +554,9 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 			}else if(!strcmp("starry_hx83102j_wt_dsi_vdo_90hz_mdt",panel->name))
 			{
 				mdelay(1);
+			}else if(!strcmp("starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+			{
+				mdelay(1);
 			}else if(!strcmp("dsbj_ft8203_wt_dsi_vdo_90hz_inx",panel->name))
 			{
 				mdelay(3);
@@ -551,7 +572,13 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 			}else if(!strcmp("xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt",panel->name))
 			{
 				mdelay(1);
+			}else if(!strcmp("xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+			{
+				mdelay(1);
 			}else if(!strcmp("djn_icnl9951r_wt_dsi_vdo_90hz_boe",panel->name))
+			{
+				mdelay(1);
+			}else if(!strcmp("xinxian_jd9366ts_wt_dsi_vdo_90hz_csot",panel->name))
 			{
 				mdelay(1);
 			}else{
@@ -570,9 +597,9 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	}
 // +P86801AA1 peiyuexiang.wt,add,20230511,add double_click
 #ifdef CONFIG_QGKI_BUILD
-	if ((himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status)&&(!is_shut_down)) {
+	if ((himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status || jd_gestrue_status)&&(!is_shut_down)) {
 #else
-	if (himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status) {
+	if (himax_gestrue_status || fts_gestrue_status || chipone_gestrue_status || jd_gestrue_status) {
 #endif
 		pr_err("[TP_LOG]dsi_panel_power_off gestrue_status = 1\n ");
 	} else {
@@ -599,6 +626,10 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 		{
 			rc = ocp2138_BiasPower_disable(2);
 			mdelay(5);
+		}else if(!strcmp("starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+		{
+			rc = ocp2138_BiasPower_disable(2);
+			mdelay(5);
 		}else if(!strcmp("dsbj_ft8203_wt_dsi_vdo_90hz_inx",panel->name))
 		{
 			rc = ocp2138_BiasPower_disable(0);
@@ -619,7 +650,15 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 		{
 			rc = ocp2138_BiasPower_disable(2);
 			mdelay(10);
+		}else if(!strcmp("xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc",panel->name))
+		{
+			rc = ocp2138_BiasPower_disable(2);
+			mdelay(10);
 		}else if(!strcmp("djn_icnl9951r_wt_dsi_vdo_90hz_boe",panel->name))
+		{
+			rc = ocp2138_BiasPower_disable(2);
+			mdelay(10);
+		}else if(!strcmp("xinxian_jd9366ts_wt_dsi_vdo_90hz_csot",panel->name))
 		{
 			rc = ocp2138_BiasPower_disable(2);
 			mdelay(10);
@@ -2351,6 +2390,8 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 			"qcom,mdss-dsi-icnl9951r-flag");
 	panel->ft8203_dsbj_flag = utils->read_bool(utils->data,
 			"qcom,mdss-dsi-ft8203-dsbj-flag");
+	panel->jd9366ts_csot_flag = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-jd9366ts-csot-flag");
 	/*-P86801AA1, wangcong.wt, ADD, 2023/08/28, add lcm ic flag*/
 
 	panel->spr_info.enable = false;
@@ -4647,7 +4688,7 @@ exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
-
+//extern int jadard_set_resgpio(bool enable);
 int dsi_panel_prepare(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -4674,7 +4715,13 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 		       panel->name, rc);
 		goto error;
 	}
-
+/*
+if(!strcmp("xinxian_jd9366ts_wt_dsi_vdo_90hz_csot",panel->name)){
+	printk("JDTP resctrl enter");
+	jadard_set_resgpio(1);
+	
+}
+*/
 error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5280,9 +5327,12 @@ int dsi_panel_read_cmd_set(struct dsi_panel *panel,
 		for (i = 0; i < read_config->cmds_rlen ; i++) {
 			pr_err("read_config->cmds_rlen:%d\n", read_config->cmds_rlen);
 			serialnum_temp20[i] = read_config->rbuf[i];
+                        serialnum_temp21[i] = read_config->rbuf[i];
 			pr_err("serialnum_temp20[%d] %c\n", i,  serialnum_temp20[i]);
 			pr_err("serialnum_temp20 %s\n", serialnum_temp20);
 		}
+ 		serialnum_temp21[i] = read_config->rbuf[i];
+		pr_err("serialnum_temp20[%d] %c\n", i,  serialnum_temp21[i]);
 	#endif
 exit:
 	dsi_display_cmd_engine_disable(display);
@@ -5691,6 +5741,27 @@ static void ft8203_dsbj_lcm_get_serialnum(struct dsi_panel *panel)
 	pr_err("ft8203 dsbj lcm_serialnum : lcm_serialnum%s \n", lcm_serialnum);
 }
 
+static void jd9366ts_csot_lcm_get_serialnum(struct dsi_panel *panel)
+{
+	int i = 0;
+	char value1[] = "00 00 39 01 00 00 00 00 04 DF 93 86 19";//39
+	char value2[] = "00 00 39 01 00 00 00 00 02 DE 00";//33
+	char value3[] = "01 21 06 01 00 01 00 00 01 EC";      //30
+	char value4[] = "00 00 39 01 00 00 00 00 04 DE 93 86 19";
+	char value5[] = "00 00 39 01 00 00 00 00 02 DF 00";
+
+	dsi_panel_mipi_reg_write(panel, value1, 39);
+	dsi_panel_mipi_reg_write(panel, value2, 33);
+	pr_err("lcm_serialnum:%s\n", lcm_serialnum);
+	dsi_panel_mipi_reg_write(panel, value3, 30);
+	for (i = 0; i < 20; i++) {//debug
+		lcm_serialnum[i] = serialnum_temp21[i+1];
+	}
+	dsi_panel_mipi_reg_write(panel, value4, 39);
+	dsi_panel_mipi_reg_write(panel, value5, 33);
+	pr_err("jd9366ts lcm_serialnum:%s\n", lcm_serialnum);
+}
+
 
 void lcm_serialnum_get(void)
 {
@@ -5710,6 +5781,9 @@ void lcm_serialnum_get(void)
 	}
 	if (display->panel->ft8203_dsbj_flag) {
 		ft8203_dsbj_lcm_get_serialnum(display->panel);
+	}
+	if (display->panel->jd9366ts_csot_flag) {
+		jd9366ts_csot_lcm_get_serialnum(display->panel);
 	}
 	pr_err("lcm_get_serialnum out\n");
 	mutex_unlock(&display->display_lock);

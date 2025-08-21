@@ -17,6 +17,7 @@
 #include "w11_c5590_front_txd_eeprom.h"
 #include "w11_sc520cs_front_txd_eeprom.h"
 #include "w11_gc08a3_rear_cxt_eeprom.h"
+#include "w11_gc05a2_front_cxt_eeprom.h"
 #include <linux/delay.h>
 
 
@@ -56,6 +57,11 @@ int eeprom_process_para_before_read(uint32_t slave_addr,struct eeprom_memory_map
 		*pWriteParams = &w11_gc08a3_rear_cxt_eeprom;
 		*pOtpParams = &w11_gc08a3_rear_cxt_otp_checkinfo;
 		*count_read = (uint32_t)W11_GC08A3_OTP_DATA_LEN;
+	}else if(w11_gc05a2_front_cxt_i2c_slave_addr == slave_addr){
+		CAM_DBG(CAM_EEPROM, "gc05a2 get otp init paras");
+		*pWriteParams = &w11_gc05a2_front_cxt_eeprom;
+		*pOtpParams = &w11_gc05a2_front_cxt_otp_checkinfo;
+		*count_read = (uint32_t)W11_GC05A2_OTP_DATA_LEN;
 	}else{
 		eeprom_result = -1;
 		CAM_DBG(CAM_EEPROM, "it is not a valid otp");
@@ -82,6 +88,9 @@ int eeprom_process_para_after_read(uint32_t slave_addr,struct eeprom_memory_map_
 	}else if(w11_gc08a3_rear_cxt_i2c_slave_addr == slave_addr){
 		CAM_DBG(CAM_EEPROM, "gc08a3 get otp uninit paras");
 		*pWriteParams = &w11_gc08a3_rear_cxt_eeprom_after_read;
+	}else if(w11_gc05a2_front_cxt_i2c_slave_addr == slave_addr){
+		CAM_DBG(CAM_EEPROM, "gc05a2 get otp uninit paras");
+		*pWriteParams = &w11_gc05a2_front_cxt_eeprom_after_read;
 	}else{
 		eeprom_result = -1;
 		CAM_DBG(CAM_EEPROM, "it is not a valid otp");

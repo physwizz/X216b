@@ -376,6 +376,8 @@ enum fix_touch_info {
 	FIX_HX_TX_NUM = 32,
 	FIX_HX_RX_NUM_MDT = 50,
 	FIX_HX_TX_NUM_MDT = 32,
+	FIX_HX_RX_NUM_MDT_AGC = 50,
+	FIX_HX_TX_NUM_MDT_AGC = 32,
 	FIX_HX_BT_NUM = 0,
 	FIX_HX_MAX_PT = 10,
 	FIX_HX_INT_IS_EDGE = true,

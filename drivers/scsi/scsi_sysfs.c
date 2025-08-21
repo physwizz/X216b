@@ -40,6 +40,7 @@
 #define WT_GET_UFS_SIZE_ZERO             0
 #define WT_GET_UFS_SIZE_64GB             64
 #define WT_GET_UFS_SIZE_128GB            128
+#define WT_GET_UFS_SIZE_256GB            256
 
 struct gendisk *ufs_disk[SD_NUM];
 //- bugP86801AA1-3497 houdujing.wt add 20230503 add flash name
@@ -420,6 +421,8 @@ static int calc_ufs_size(unsigned long long size)
   	return WT_GET_UFS_SIZE_64GB;
   else if ((temp_size > 64) && (temp_size <= 128))
   	return WT_GET_UFS_SIZE_128GB;
+  else if ((temp_size >128) && (temp_size <= 256))
+	return WT_GET_UFS_SIZE_256GB;
   else
     return WT_GET_UFS_SIZE_ZERO;
 }

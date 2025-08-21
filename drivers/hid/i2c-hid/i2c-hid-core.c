@@ -67,6 +67,7 @@
 #define I2C_HID_READ_PENDING	2
 #define I2C_HID_KBFW_UPDATE	3
 #define I2C_HID_PROBE	4
+#define I2C_HID_KBFW_UPDATE_RESULT	5
 
 #define I2C_HID_PWR_ON		0x00
 #define I2C_HID_PWR_SLEEP	0x01
@@ -139,14 +140,17 @@ const unsigned int crc32_MPEG_2_table[256] = {
 extern char Mcu_name[HARDWARE_MAX_ITEM_LONGTH];
 extern u8 pad_mcu_cur_ver[HARDWARE_MAX_ITEM_LONGTH];
 extern u8 kb_mcu_cur_ver[HARDWARE_MAX_ITEM_LONGTH];
+extern bool kbd_genuine;
 
-//kb update
 u8 PCBA_SN[13] = {0};
 u8 kb_mcu_test_ver[64] = {0};
 u8 ENTIRE_SN[65] = {0};
-unsigned int data_address,data_len;
-const unsigned char *kbfw_data = NULL;
+//kb update
+unsigned int data_address,data_len,whole_len;
+char *kbfw_data1 = NULL;
 static int KB_FW_FLAGS = 0;
+static int update_flag = 0;
+//kb connect
 bool probe_status = false;
 bool kbd_connect = false;
 EXPORT_SYMBOL_GPL(kbd_connect);
@@ -156,7 +160,6 @@ bool connect_event = false;
 
 //firmware
 const struct firmware *fw_entry = NULL;
-const struct firmware *kbfw_entry = NULL;
 
 /* debug option */
 static bool debug;
@@ -271,7 +274,6 @@ struct i2c_hid {
 	//+P86801AA1-1797, caoxin2.wt, add, 2023.07.18, KB bringup
 	u32 kpdmcu_fw_mcu_version;
 	u16 kb_fw_current_ver;
-	u32 kb_fw_new_ver;
 	struct work_struct inreport_parse_work;
 	struct work_struct kbfw_update_work;
 	struct workqueue_struct *hid_queuework;
@@ -282,6 +284,7 @@ struct i2c_hid {
 	struct pinctrl_state *pins_sleep_suspend;
 	//-P86801AA1-1797, caoxin2.wt, add, 2023.07.18, KB bringup
 };
+struct i2c_hid *hid_kbd;
 
 static const struct i2c_hid_quirks {
 	__u16 idVendor;
@@ -717,6 +720,7 @@ static void pad_mcu_resume(struct i2c_hid *ihid)
 		dev_err(&ihid->client->dev, "%s:Mcu resume success\n", __func__);
 }
 
+static int get_ENTIRE_SN(struct i2c_hid *ihid);
 static int i2c_hid_connect(struct i2c_hid *ihid)
 {
 	int ret;
@@ -727,13 +731,15 @@ static int i2c_hid_connect(struct i2c_hid *ihid)
 	}
 
 	if (!kbd_connect){
+		pad_mcu_resume(ihid);
+		msleep(100);
+		get_ENTIRE_SN(ihid);
 		ret = hid_hw_start(ihid->hid, HID_CONNECT_HIDINPUT);
 		if (ret) {
 			dev_err(&ihid->client->dev, "%s:keyboard detected,register input dev fail\n", __func__);
 			return ret;
 		} else {
 			kbd_connect = true;
-			pad_mcu_resume(ihid);
 			dev_err(&ihid->client->dev, "%s:keyboard detected,register input dev success\n", __func__);
 		}
 	} else {
@@ -754,9 +760,6 @@ static int i2c_hid_disconnect(struct i2c_hid *ihid)
 		hid_hw_stop(ihid->hid);
 		kbd_connect = false;
 		pad_mcu_suspend(ihid);
-		if (test_bit(I2C_HID_KBFW_UPDATE,&ihid->flags)) {
-			clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-		}
 		dev_err(&ihid->client->dev, "%s:keyboard detected,unregister input dev success\n", __func__);
 	} else {
 		dev_err(&ihid->client->dev, "%s:keyboard disconnect again\n", __func__);
@@ -916,7 +919,9 @@ out:
 
 static int get_ENTIRE_SN(struct i2c_hid *ihid)
 {
-	int ret;
+	int ret,i;
+	char kbsn1[] = {"RA7"};
+	char kbsn2[] = {"KD24A1KB"};
 	__u8* buf = (__u8*)kzalloc(66, GFP_KERNEL);
 	ret = ihid->hid->ll_driver->raw_request(ihid->hid, GET_ENTIRE_SN, buf, 66, HID_FEATURE_REPORT, HID_REQ_GET_REPORT);
 	if (ret < 0){
@@ -927,6 +932,37 @@ static int get_ENTIRE_SN(struct i2c_hid *ihid)
 	memcpy(ENTIRE_SN, buf + 1, 65);
 	i2c_hid_dbg(ihid, "%s:ENTIRE_SN: %*ph\n", __func__, 65, ENTIRE_SN);
 	ret = 0;
+
+	//select keyboard
+	for (i = 0;i < strlen(kbsn1);i++) {
+		if ((int)kbsn1[i] != ENTIRE_SN[i+1]) {
+			dev_err(&ihid->client->dev, "%s:i %d, (int)kbsn1[i] = %02X, ENTIRE_SN[i] = %02X\n", __func__, i, (int)kbsn1[i], ENTIRE_SN[i+1]);
+			break;
+		}
+	}
+
+	dev_err(&ihid->client->dev, "%s:strlen(kbsn1) = %d, i = %d\n", __func__, strlen(kbsn1), i);
+	if (i == strlen(kbsn1)) {
+		snprintf(ihid->hid->name, sizeof(ihid->hid->name), "%s", "Book Cover Keyboard Slim (EF-DX211)");
+		kbd_genuine = true;
+		goto out;
+	}
+
+	for (i = 0;i < strlen(kbsn2);i++) {
+		if ((int)kbsn2[i] != ENTIRE_SN[i+1]) {
+			dev_err(&ihid->client->dev, "%s:i %d, (int)kbsn2[i] = %02X, ENTIRE_SN[i] = %02X\n", __func__, i, (int)kbsn2[i], ENTIRE_SN[i+1]);
+			break;
+		}
+	}
+
+	dev_err(&ihid->client->dev, "%s:strlen(kbsn2) = %d, i = %d\n", __func__, strlen(kbsn2), i);
+	if (i == strlen(kbsn2)) {
+		snprintf(ihid->hid->name, sizeof(ihid->hid->name), "%s", "Book Cover Keyboard Slim (NEOS KEYBOARD)");
+		kbd_genuine = true;
+	} else {
+		snprintf(ihid->hid->name, sizeof(ihid->hid->name), "%s", "Unknown");
+	}
+
 out:
 	kfree(buf);
 	return ret;
@@ -1038,22 +1074,190 @@ static struct class pad_keyboard_class = {
 #endif
 };
 
-int pad_keyboard_sysfs_init(struct i2c_hid *ihid)
+static char hall_logical_status[10];
+static ssize_t hall_logical_detect_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+
+	ret = snprintf(buf, sizeof(hall_logical_status), "%s", hall_logical_status);
+
+	return ret;
+}
+
+static ssize_t hall_logical_detect_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+{
+	memset(hall_logical_status, 0, sizeof(hall_logical_status));
+	memcpy(hall_logical_status, buf, count);
+
+	return count;
+}
+
+static ssize_t get_fw_ver_ic_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+
+	if (kbd_connect) {
+		len += snprintf(buf+len, PAGE_SIZE, "EF-DX211_v%s", kb_mcu_cur_ver);
+	} else {
+		len += snprintf(buf+len, PAGE_SIZE, "");
+	}
+
+	return len;
+}
+
+static int fw_size;
+static ssize_t pogo_keyboard_fw_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+
+	return len;
+}
+
+static ssize_t pogo_keyboard_fw_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+{
+	hid_err(hid_kbd->hid, "%s, count = %d\n", __func__, count);
+
+	fw_size = count;
+	memcpy(kbfw_data1 + whole_len, buf, count);
+	whole_len += count;
+
+	hid_err(hid_kbd->hid, "%s, whole_len = %d\n", __func__, whole_len);
+	return count;
+}
+
+static int kb_fw_update(struct i2c_hid *ihid);
+static int fw_update_flag;
+static ssize_t fw_update_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+
+	len += snprintf(buf+len, PAGE_SIZE, "%d\n", fw_update_flag);
+	return len;
+}
+
+static ssize_t fw_update_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+{
+	int fw_update, ret;
+
+	if (sscanf(buf, "%d", &fw_update) != 1) {
+		hid_err(hid_kbd->hid, "%s:please input one numbers\n", __func__);
+		return -EINVAL;
+	}
+
+	hid_err(hid_kbd->hid, "%s\n", __func__);
+	fw_update_flag = fw_update;
+	if (!fw_update) {
+		update_flag = 0;
+		clear_bit(I2C_HID_KBFW_UPDATE_RESULT, &hid_kbd->flags);
+
+		if (kbfw_data1 == NULL) {
+			hid_err(hid_kbd->hid, "%s:keyboard firmware is NULL\n", __func__);
+			return -EINVAL;
+		}
+		if  (!kbd_connect) {
+			hid_err(hid_kbd->hid, "%s:keyboard disconnect\n", __func__);
+			return -EAGAIN;
+		}
+
+		KB_FW_FLAGS = 1;
+		set_bit(I2C_HID_KBFW_UPDATE,&hid_kbd->flags);
+
+		ret = kb_fw_update(hid_kbd);
+		if (ret < 0) {
+			dev_err(&hid_kbd->client->dev, "%s:kb fw update fail, ret = %d, KB_FW_FLAGS = %d\n", __func__, ret, KB_FW_FLAGS);
+			KB_FW_FLAGS = 0;
+			clear_bit(I2C_HID_KBFW_UPDATE,&hid_kbd->flags);
+			whole_len = 0;
+			memset(kbfw_data1, 0, 156 * PAGE);
+			return -EAGAIN;
+		}
+
+		if (!wait_event_timeout(hid_kbd->wait,
+				test_bit(I2C_HID_KBFW_UPDATE_RESULT, &hid_kbd->flags),
+				msecs_to_jiffies(30000))) {
+			whole_len = 0;
+			memset(kbfw_data1, 0, 156 * PAGE);
+			KB_FW_FLAGS = 0;
+			clear_bit(I2C_HID_KBFW_UPDATE,&hid_kbd->flags);
+			dev_err(&hid_kbd->client->dev, "%s:kb fw update timeout\n", __func__);
+			return -EAGAIN;
+		}
+	}
+
+	if (update_flag > 0) {
+		dev_err(&hid_kbd->client->dev, "%s:kb fw update success\n", __func__);
+		return count;
+	} else {
+		dev_err(&hid_kbd->client->dev, "%s:kb fw update fail\n", __func__);
+		return -EAGAIN;
+	}
+}
+
+static ssize_t keyboard_connected_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+
+	if (kbd_connect) {
+		len += snprintf(buf+len, PAGE_SIZE, "%d", 1);
+	} else {
+		len += snprintf(buf+len, PAGE_SIZE, "%d", 0);
+	}
+
+	return len;
+}
+
+static ssize_t get_tc_fw_ver_ic_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+
+	len += snprintf(buf+len, PAGE_SIZE, "%04X", 0xFF00);
+	return len;
+}
+
+static struct class_attribute class_attr_hall_logical_detect = __ATTR(hall_logical_detect, 0664, hall_logical_detect_show, hall_logical_detect_store);
+static struct class_attribute class_attr_get_fw_ver_ic = __ATTR(get_fw_ver_ic, 0664, get_fw_ver_ic_show, NULL);
+static struct class_attribute class_attr_pogo_keyboard_fw = __ATTR(pogo_keyboard_fw, 0664, pogo_keyboard_fw_show, pogo_keyboard_fw_store);
+static struct class_attribute class_attr_fw_update = __ATTR(fw_update, 0664, fw_update_show, fw_update_store);
+static struct class_attribute class_attr_keyboard_connected = __ATTR(keyboard_connected, 0664, keyboard_connected_show, NULL);
+static struct class_attribute class_attr_get_tc_fw_ver_ic = __ATTR(get_tc_fw_ver_ic, 0664, get_tc_fw_ver_ic_show, NULL);
+
+static struct attribute *sec_keyboard_class_attrs[] = {
+	&class_attr_hall_logical_detect.attr,
+	&class_attr_get_fw_ver_ic.attr,
+	&class_attr_pogo_keyboard_fw.attr,
+	&class_attr_fw_update.attr,
+	&class_attr_keyboard_connected.attr,
+	&class_attr_get_tc_fw_ver_ic.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(sec_keyboard_class);
+
+static struct class sec_keyboard_class = {
+	.name = "sec_keyboard",
+	.owner = THIS_MODULE,
+	.class_groups = sec_keyboard_class_groups,
+};
+
+int keyboard_sysfs_init(struct i2c_hid *ihid)
 {
 	int ret = 0;
 
 	ret = class_register(&pad_keyboard_class);
-	if (!ret) {
-		dev_err(&ihid->client->dev, "pad_keyboard_class register\n", __func__);
+	if (ret < 0) {
+		dev_err(&ihid->client->dev, "%s:pad_keyboard_class register fail\n", __func__);
+	}
+	ret = class_register(&sec_keyboard_class);
+	if (ret < 0) {
+		dev_err(&ihid->client->dev, "%s:sec_keyboard_class register fail\n", __func__);
 	}
 
 	return ret;
 }
 
-void pad_keyboard_sysfs_deinit(struct i2c_hid *ihid)
+void keyboard_sysfs_deinit(struct i2c_hid *ihid)
 {
 	class_unregister(&pad_keyboard_class);
-	dev_err(&ihid->client->dev, "pad_keyboard_class unregister\n", __func__);
+	class_unregister(&sec_keyboard_class);
 }
 //-P86801AA1-11506, caoxin2.wt, add, 2023.08.18, ADD NODES
 
@@ -1183,24 +1387,6 @@ struct hid_ll_driver i2c_hid_ll_driver = {
 EXPORT_SYMBOL_GPL(i2c_hid_ll_driver);
 
 //+P86801AA1-1797, caoxin2.wt, modify, 2023.07.18, KB bringup
-static int request_kb_firmware(struct i2c_hid *ihid)
-{
-	int ret;
-	char *fw_path = "MH2113C_kb.bin";
-
-	ret = request_firmware(&kbfw_entry, fw_path, &ihid->client->dev);
-	if (ret) {
-		dev_err(&ihid->client->dev, "request_kb_firmware fail\n");
-		return ret;
-	} else {
-		dev_err(&ihid->client->dev, "request_kb_firmware success\n");
-	}
-
-	//fw_data_count:get from input report
-	kbfw_data = kbfw_entry->data;
-	return ret;
-}
-
 static int fetch_kb_fw_version(struct i2c_hid *ihid)
 {
 	//get report
@@ -1224,7 +1410,7 @@ static int fetch_kb_fw_version(struct i2c_hid *ihid)
 	} else {
 		ihid->kb_fw_current_ver = (recv >> 8) & 0xFFFF;
 		dev_err(&ihid->client->dev, "%s:kb_fw_current_ver = %d\n",__func__, ihid->kb_fw_current_ver);
-		snprintf(kb_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X %02X", ((ihid->kb_fw_current_ver >> 8) & 0xFF), (ihid->kb_fw_current_ver & 0xFF));
+		snprintf(kb_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X%02X", ((ihid->kb_fw_current_ver >> 8) & 0xFF), (ihid->kb_fw_current_ver & 0xFF));
 	}
 
 out:
@@ -1303,7 +1489,7 @@ static int IAP_update_exit(struct i2c_hid *ihid)
 static int IAP_jump(struct i2c_hid *ihid)
 {
 	int ret;
-	__u8 data[] = {0x0a,0x07,0x01,0x00,0x00,0x00};
+	__u8 data[] = {0x0a,0x07,0x00,0x00,0x00,0x00};
 
 	ret = i2c_hid_raw_request(ihid->hid,KB_CONTROL_COMMAND,data,6,HID_FEATURE_REPORT,HID_REQ_SET_REPORT);
 	if (ret < 0){
@@ -1320,63 +1506,50 @@ static int kb_fw_update(struct i2c_hid *ihid)
 	if (test_bit(I2C_HID_KBFW_UPDATE,&ihid->flags)){
 		switch(KB_FW_FLAGS){
 			case 1:
-				ret = fetch_kb_fw_version(ihid);
-				if (ret < 0) {
-					dev_err(&ihid->client->dev, "%s:fetch_kb_fw_version fail\n", __func__);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-					break;
-				}
-
-				ihid->kb_fw_new_ver = (kbfw_data[0] & 0xFF) | ((kbfw_data[1] << 8) & 0xFF00) | ((kbfw_data[2] << 16) & 0xFF0000) | ((kbfw_data[3] << 8) & 0xFF000000);
-				if ((ihid->kb_fw_current_ver < 4) && (ihid->kb_fw_current_ver >= 2)) {
-					dev_err(&ihid->client->dev, "%s: Old keyboard, the fw version is %d. Do not upgrade the firmware.\n", __func__, ihid->kb_fw_current_ver);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-					break;
-				} else if ((ihid->kb_fw_current_ver < 2) &&(ihid->kb_fw_new_ver >= 4)) {
-					dev_err(&ihid->client->dev, "%s: New firmware V%02X cannot be upgraded to old keyboards\n", __func__, ihid->kb_fw_new_ver);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-					break;
-				}
-				if ((ihid->kb_fw_new_ver > ihid->kb_fw_current_ver) || (ihid->kb_fw_current_ver > 0xAA00)) {
-					dev_err(&ihid->client->dev, "%s,start kb fw upgrade\n", __func__);
-					ret = kb_fw_IAP_upgrade(ihid);
-					if (ret < 0){
-						clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-					}
-				} else {
-					dev_err(&ihid->client->dev, "%s,No kb mcu firmware upgrade required,ihid->kb_fw_new_ver = %d <= ihid->kb_fw_current_ver = %d\n",
-							__func__, ihid->kb_fw_new_ver, ihid->kb_fw_current_ver);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+				dev_err(&ihid->client->dev, "%s,start kb fw upgrade\n", __func__);
+				ret = kb_fw_IAP_upgrade(ihid);
+				if (ret < 0){
+					goto cmd_fail;
 				}
 				break;
 			case 2:
-				ret = IAP_flash_program(ihid,data_address,data_len,kbfw_data);
+				ret = IAP_flash_program(ihid,data_address,data_len,kbfw_data1);
 				if (ret < 0) {
 					dev_err(&ihid->client->dev, "%s, IAP_flash_program fail\n", __func__);
 					dev_err(&ihid->client->dev, "%s, KB_FW_FLAGS = %d, data_len = %d, data_address = %d\n", __func__, KB_FW_FLAGS, data_len, data_address);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+					goto cmd_fail;
 				}
 				break;
 			case 3:
 				ret = IAP_update_exit(ihid);
 				if (ret < 0){
 					dev_err(&ihid->client->dev, "%s, IAP_update_exit fail\n", __func__);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+					goto cmd_fail;
 				}
 				break;
 			case 4:
 				ret = IAP_jump(ihid);
 				if (ret < 0){
 					dev_err(&ihid->client->dev, "%s, IAP_jump fail\n", __func__);
-					clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+					goto cmd_fail;
 				}
 				break;
 			default:
 				ret = -EINVAL;
-				clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+				dev_err(&ihid->client->dev, "%s, unknown kb fw update step\n", __func__);
+				goto cmd_fail;
 				break;
 		}
 	}
+	return 0;
+
+cmd_fail:
+	update_flag = -1;
+	set_bit(I2C_HID_KBFW_UPDATE_RESULT, &hid_kbd->flags);
+	wake_up(&ihid->wait);
+	KB_FW_FLAGS = 0;
+	clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+
 	return ret;
 }
 
@@ -1464,9 +1637,10 @@ static int input_kb_response_parse(struct i2c_hid *ihid)
 					ret = kb_fw_update(ihid);
 					if (ret < 0)
 						goto upgrade_err;
-				} else
+				} else {
 					dev_err(&ihid->client->dev, "%s,kb fw update fail \n", __func__);
-					goto upgrade_end;
+					goto upgrade_fail;
+				}
 			} else {
 				dev_err(&ihid->client->dev, "%s,IAP UPDATE exit NAK\n", __func__);
 				goto upgrade_nak;
@@ -1475,7 +1649,7 @@ static int input_kb_response_parse(struct i2c_hid *ihid)
 		case 0x7a:
 			if (kb_ack){
 				dev_err(&ihid->client->dev, "%s,jump ACK\n", __func__);
-				goto upgrade_end;
+				goto upgrade_jump;
 			} else {
 				dev_err(&ihid->client->dev, "%s,jump NAK\n", __func__);
 				goto upgrade_nak;
@@ -1519,9 +1693,16 @@ upgrade_err:
 	if (ret < 0)
 		dev_err(&ihid->client->dev, "%s:kb fw update fail, ret = %d, KB_FW_FLAGS = %d\n", __func__, ret, KB_FW_FLAGS);
 
-upgrade_end:
+upgrade_fail:
+	update_flag = -1;
+	set_bit(I2C_HID_KBFW_UPDATE_RESULT, &hid_kbd->flags);
+	wake_up(&ihid->wait);
 	KB_FW_FLAGS = 0;
 	clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+
+upgrade_jump:
+	whole_len = 0;
+	memset(kbfw_data1, 0, 156 * PAGE);
 	if (ihid->pogopin_wakelock) {
 		__pm_relax(ihid->pogopin_wakelock);
 	}
@@ -1570,10 +1751,10 @@ out:
 
 static int input_event_report_parse(struct i2c_hid *ihid)
 {
-	int ret;
+	int ret = 0;
+	int have_update = 0;
 	u8 *input_buf;
 
-	ret = 0;
 	input_buf = ihid->inbuf;
 	i2c_hid_dbg(ihid, "%s:input_buf[3] = %d\n", __func__, input_buf[3]);
 	switch(input_buf[3]){
@@ -1589,19 +1770,23 @@ static int input_event_report_parse(struct i2c_hid *ihid)
 			ret = i2c_hid_connect(ihid);
 			if (ret) {
 				dev_err(&ihid->client->dev, "%s:i2c hid connect fail\n", __func__);
+				pad_mcu_suspend(ihid);
 				break;
 			}
-			msleep(30);
+			have_update = test_bit(I2C_HID_KBFW_UPDATE, &ihid->flags);
+			if (have_update) {
+				set_bit(I2C_HID_KBFW_UPDATE_RESULT, &ihid->flags);
+				update_flag = 1;
+				wake_up(&ihid->wait);
+				KB_FW_FLAGS = 0;
+				clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+			}
 			dev_err(&ihid->client->dev, "%s:kbd connect end\n", __func__);
 			get_kb_mcu_ver(ihid);
-			get_ENTIRE_SN(ihid);
 			get_PCBA_SN(ihid);
-
-			ret = request_kb_firmware(ihid);
-			if (!ret) {
-				KB_FW_FLAGS = 1;
-				set_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
-				kb_fw_update(ihid);
+			ret = fetch_kb_fw_version(ihid);
+			if (ret < 0) {
+				dev_err(&ihid->client->dev, "%s:fetch_kb_fw_version fail\n", __func__);
 			}
 
 			break;
@@ -1614,10 +1799,20 @@ static int input_event_report_parse(struct i2c_hid *ihid)
 				dev_err(&ihid->client->dev, "%s:i2c hid disconnect fail\n", __func__);
 				break;
 			}
+			whole_len = 0;
+			memset(kbfw_data1, 0, 156 * PAGE);
 			memset(PCBA_SN, 0, sizeof(PCBA_SN));
 			memset(ENTIRE_SN, 0, sizeof(ENTIRE_SN));
 			memset(kb_mcu_test_ver, 0, sizeof(kb_mcu_test_ver));
 			snprintf(kb_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "NULL");
+			have_update = test_bit(I2C_HID_KBFW_UPDATE, &ihid->flags);
+			if (have_update) {
+				set_bit(I2C_HID_KBFW_UPDATE_RESULT, &ihid->flags);
+				update_flag = -1;
+				wake_up(&ihid->wait);
+				KB_FW_FLAGS = 0;
+				clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+			}
 			break;
 		case 0x10:
 			dev_err(&ihid->client->dev, "%s:kbd disconnect, Heartbeat Timeout\n", __func__);
@@ -1628,10 +1823,20 @@ static int input_event_report_parse(struct i2c_hid *ihid)
 				dev_err(&ihid->client->dev, "%s:i2c hid disconnect fail\n", __func__);
 				break;
 			}
+			whole_len = 0;
+			memset(kbfw_data1, 0, 156 * PAGE);
 			memset(PCBA_SN, 0, sizeof(PCBA_SN));
 			memset(ENTIRE_SN, 0, sizeof(ENTIRE_SN));
 			memset(kb_mcu_test_ver, 0, sizeof(kb_mcu_test_ver));
 			snprintf(kb_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "NULL");
+			have_update = test_bit(I2C_HID_KBFW_UPDATE, &ihid->flags);
+			if (have_update) {
+				set_bit(I2C_HID_KBFW_UPDATE_RESULT, &ihid->flags);
+				update_flag = -1;
+				wake_up(&ihid->wait);
+				KB_FW_FLAGS = 0;
+				clear_bit(I2C_HID_KBFW_UPDATE,&ihid->flags);
+			}
 			break;
 		case 0x20:
 			dev_err(&ihid->client->dev, "%s:HID sleep or wake-up\n", __func__);
@@ -2409,7 +2614,7 @@ static int padmcu_fw_update(struct i2c_hid *ihid, u16 current_ver)
 	}
 	msleep(250);
 
-	snprintf(pad_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X %02X", firmware_data[1049], firmware_data[1048]);
+	snprintf(pad_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X%02X", firmware_data[1049], firmware_data[1048]);
 
 	return 0;
 }
@@ -2507,6 +2712,9 @@ static int i2c_hid_probe(struct i2c_client *client,
 	struct i2c_hid_platform_data *platform_data = client->dev.platform_data;
 	u16 pad_mcu_current_ver;
 	char *wake_name = NULL;
+
+	kbfw_data1 = (char *)kzalloc(156 * PAGE, GFP_KERNEL);
+	memset(kbfw_data1, 0, 156 * PAGE);
 
 	dbg_hid("HID probe called for i2c 0x%02x\n", client->addr);
 	if (!client->irq) {
@@ -2610,7 +2818,7 @@ static int i2c_hid_probe(struct i2c_client *client,
 
 	//mcu_update
 	pad_mcu_current_ver = le16_to_cpu(ihid->hdesc.wVersionID);
-	snprintf(pad_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X %02X", ((pad_mcu_current_ver >> 8) & 0xFF), (pad_mcu_current_ver & 0xFF));
+	snprintf(pad_mcu_cur_ver, HARDWARE_MAX_ITEM_LONGTH, "%02X%02X", ((pad_mcu_current_ver >> 8) & 0xFF), (pad_mcu_current_ver & 0xFF));
 
 	ret = padmcu_fw_update(ihid, pad_mcu_current_ver);
 	if (fw_entry != NULL) {
@@ -2652,7 +2860,7 @@ static int i2c_hid_probe(struct i2c_client *client,
 	hid->vendor = le16_to_cpu(ihid->hdesc.wVendorID);
 	hid->product = le16_to_cpu(ihid->hdesc.wProductID);
 
-	snprintf(hid->name, sizeof(hid->name), "%s", "book cover keyboard(EF-DX211)");
+	snprintf(hid->name, sizeof(hid->name), "%s", "Keyboard");
 	strlcpy(hid->phys, dev_name(&client->dev), sizeof(hid->phys));
 
 	ihid->quirks = i2c_hid_lookup_quirk(hid->vendor, hid->product);
@@ -2664,10 +2872,11 @@ static int i2c_hid_probe(struct i2c_client *client,
 		goto err_mem_free;
 	}
 
-	pad_keyboard_sysfs_init(ihid);
+	keyboard_sysfs_init(ihid);
 	wake_name = devm_kasprintf(&hid->dev, GFP_KERNEL, "%s", "pogo fw wakelock");
 	ihid->pogopin_wakelock = wakeup_source_register(NULL, wake_name);
 
+	hid_kbd = ihid;
 	set_bit(I2C_HID_PROBE,&ihid->flags);
 
 	i2c_hid_dbg(ihid, "%s:connect_event %d\n", __func__, connect_event);
@@ -2702,13 +2911,9 @@ static int i2c_hid_remove(struct i2c_client *client)
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	struct hid_device *hid;
 
-	pad_keyboard_sysfs_deinit(ihid);
-
-	if (kbfw_entry != NULL) {
-		release_firmware(kbfw_entry);
-		kbfw_entry = NULL;
-		dev_err(&client->dev, "%s:release kb firmware\n", __func__);
-	}
+	keyboard_sysfs_deinit(ihid);
+	kfree(kbfw_data1);
+	kbfw_data1 = NULL;
 
 	hid = ihid->hid;
 	hid_destroy_device(hid);

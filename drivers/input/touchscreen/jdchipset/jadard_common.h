@@ -33,9 +33,15 @@
 #include <linux/kallsyms.h>
 #endif
 
-#define JADARD_DRIVER_VER        "01.AF" /* MAJOR_VER.MINOR_VER */
-#define JADARD_DRIVER_CID_VER    "00.02" /* MAJOR_CID_VER.MINOR_CID_VER */
+#define JADARD_DRIVER_VER        "01.B3" /* MAJOR_VER.MINOR_VER */
+#define JADARD_DRIVER_CID_VER    "00.08" /* MAJOR_CID_VER.MINOR_CID_VER */
 #define JADARD_PROC_TOUCH_FOLDER "jadard_touch"
+#define JADARD_PROC_FAC_FOLDER "touchscreen"	//"jadard_touch"
+
+#if defined(CONFIG_DRV_SAMSUNG) || defined(CONFIG_SEC_CLASS)
+#include <linux/input/sec_cmd.h>
+#define SEC_TSP_FACTORY_TEST
+#endif
 
 #define JD_TS_WAKE_LOCK_TIMEOUT  (5000)
 #define JD_READ_LEN_OVERFLOW     (1)
@@ -85,6 +91,8 @@
 #define JD_FB_DELAY_TIME         (15000)
 #define JD_USB_DETECT_DELAY_TIME (35000)
 #define JD_ESD_CHECK_DELAY_TIME  (50000)
+#define JD_HID_MODE_DELAY_TIME   (70000)
+#define JD_RESUME_DELAY_TIME     (50)
 
 /*=========== Config select start ===========*/
 /* #define JD_REPORT_CHECKSUM */
@@ -138,7 +146,7 @@
 /* Other config */
 #define JD_RST_PIN_FUNC
 #define JD_SMART_WAKEUP 
-/* #define JD_SYS_CLASS_SMWP_EN */
+#define JD_SYS_CLASS_SMWP_EN
 #define JD_HIGH_SENSITIVITY
 /* #define JD_ROTATE_BORDER */
 #define JD_EARPHONE_DETECT
@@ -176,6 +184,7 @@
  * SPRD Platform DRM: JD_CONFIG_SPRD_DRM
  * System Node: JD_CONFIG_NODE
  */
+#define JD_RESUME_NOT_WAIT_FW
 #define JD_CONFIG_FB
 #define JD_CONFIG_DRM 
 //#define JD_CONFIG_DRM_MSM
@@ -303,9 +312,14 @@ enum JD_DBIC_RELATED_SETTING {
 enum JD_DBI_DDREG_ADDR {
     JD_DBI_DDREG_BASE_ADDR         = 0x50000000,
     JD_DBI_DDREG_STD_CMD_BASE_ADDR = 0x50800000,
+    JD_S_DBI_DDREG_BASE_ADDR         = 0x51000000,
+    JD_S_DBI_DDREG_STD_CMD_BASE_ADDR = 0x51800000,
 };
 
 struct jadard_ts_data {
+#ifdef SEC_TSP_FACTORY_TEST
+    struct sec_cmd_data sec;
+#endif
     bool suspended;
     bool rawdata_little_endian;
     atomic_t suspend_mode;
@@ -352,17 +366,17 @@ struct jadard_ts_data {
     struct delayed_work work_upgrade;
 #endif
 
+    bool fw_ready;
 #ifdef JD_ZERO_FLASH
     struct workqueue_struct *jadard_0f_upgrade_wq;
     struct delayed_work work_0f_upgrade;
     bool power_on_upgrade;
-    bool fw_ready;
+#endif
 
 #ifdef JD_ESD_CHECK
     bool esd_check_running;
     struct workqueue_struct *jadard_esd_check_wq;
     struct delayed_work work_esd_check;
-#endif
 #endif
 
     struct workqueue_struct *jadard_diag_wq;
@@ -395,7 +409,9 @@ struct jadard_ts_data {
     int rotate_switch_mode;
     uint16_t rotate_border;
 #endif
-
+#ifdef CONFIG_QGKI_BUILD
+struct notifier_block notifier_earjack;
+#endif
 #ifdef JD_EARPHONE_DETECT
     /*     High byte      Low byte
      * ------------------------------
@@ -414,6 +430,11 @@ struct jadard_ts_data {
 #ifdef JD_PALM_EN
     uint8_t palm_detect;
     uint8_t pre_palm_detect;
+#endif
+
+#ifdef JD_RESUME_NOT_WAIT_FW
+    struct workqueue_struct *jadard_resume_wq;
+    struct delayed_work jadard_resume_work;
 #endif
 
 #if defined(JD_CONFIG_SPRD_DRM)

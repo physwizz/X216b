@@ -5894,13 +5894,19 @@ static int dsi_display_bind(struct device *dev,
 		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);
 		DSI_INFO("Successfully bind display panel '%s'\n", display->name);
 	}
+	else if(!strcmp("qcom,mdss_dsi_hx83102j_starry_agc_video_display",display->name))
+	{
+		strlcpy(Lcm_name, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), HARDWARE_MAX_ITEM_LONGTH);
+		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);
+		DSI_INFO("Successfully bind display panel '%s'\n", display->name);
+	}
 	else if(!strcmp("qcom,mdss_dsi_hx83102j_lide_video_display",display->name))
 	{
 		strlcpy(Lcm_name, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), HARDWARE_MAX_ITEM_LONGTH);
 		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);
 		DSI_INFO("Successfully bind display panel '%s'\n", display->name);
 	}
-	else if(!strcmp("qcom,mdss_dsi_icnl9951r_boe_video_display",display->name))
+	else if(!strcmp("qcom,mdss_dsi_icnl9958r_boe_video_display",display->name))
 	{
 		strlcpy(Lcm_name, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), HARDWARE_MAX_ITEM_LONGTH);
 		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);
@@ -5925,6 +5931,12 @@ static int dsi_display_bind(struct device *dev,
 		DSI_INFO("Successfully bind display panel '%s'\n", display->name);
 	}
 	else if(!strcmp("qcom,mdss_dsi_icnl9951r_xinxian_video_display",display->name))
+	{
+		strlcpy(Lcm_name, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), HARDWARE_MAX_ITEM_LONGTH);
+		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);
+		DSI_INFO("Successfully bind display panel '%s'\n", display->name);
+	}
+	else if(!strcmp("qcom,mdss_dsi_icnl9951r_xinxian_agc_video_display",display->name))
 	{
 		strlcpy(Lcm_name, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), HARDWARE_MAX_ITEM_LONGTH);
 		strlcpy(Lcm_name_tp, utils->get_property(utils->data,"qcom,mdss-dsi-panel-name", NULL), 255);

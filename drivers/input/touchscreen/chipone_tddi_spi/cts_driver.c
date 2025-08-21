@@ -625,7 +625,8 @@ static int cts_driver_probe(struct spi_device *client)
 	(strcmp(Lcm_name_tp,"hjr_icnl9951r_wt_dsi_vdo_90hz_hkc") != 0) &&
 	(strcmp(Lcm_name_tp,"txd_icnl9951r_wt_dsi_vdo_90hz_hkc") != 0) &&
 	(strcmp(Lcm_name_tp,"xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt") != 0)&&
-	(strcmp(Lcm_name_tp,"djn_icnl9951r_wt_dsi_vdo_90hz_boe") != 0)) {
+	(strcmp(Lcm_name_tp,"djn_icnl9951r_wt_dsi_vdo_90hz_boe") != 0) &&
+	(strcmp(Lcm_name_tp,"xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc") != 0)) {
 		cts_err("Lcm_name_tp Match failed\n");
 		return -ENODEV;
     }

@@ -14,6 +14,7 @@
 #define JADARD_PROC_DISPLAY_FILE      "display"
 #define JADARD_PROC_DISPLAY_STD_FILE  "display_std"
 #define JADARD_PROC_DEBUG_FILE        "debug"
+#define JADARD_PROC_BUF_RD_FILE       "buf_rd"
 
 static struct proc_dir_entry *jadard_proc_report_debug_file;
 static struct proc_dir_entry *jadard_proc_fw_package_file;
@@ -28,6 +29,7 @@ static struct proc_dir_entry *jadard_proc_register_file;
 static struct proc_dir_entry *jadard_proc_display_file;
 static struct proc_dir_entry *jadard_proc_display_std_file;
 static struct proc_dir_entry *jadard_proc_debug_file;
+static struct proc_dir_entry *jadard_proc_buf_rd_file;
 
 #define JD_MASTER_FW_DUMP_FILE "/sdcard/JD_MASTER_FW_Dump.bin"
 #define JD_SLAVE_FW_DUMP_FILE  "/sdcard/JD_SLAVE_FW_Dump.bin"
@@ -51,6 +53,7 @@ static int KeepFrame;
 static struct file *jd_diag_mutual_fn;
 int                *jd_diag_mutual;
 int                 jd_diag_mutual_cnt;
+uint8_t            *jd_buf;
 static uint8_t     diag_arr_num;
 static uint8_t     reg_cmd[4];
 static uint8_t     reg_cmd_len;
@@ -67,6 +70,8 @@ static bool    fw_dump_going;
 static char debug_cmd;
 static bool fw_upgrade_complete;
 bool jd_g_dbg_enable;
+static bool        jd_g_buf_rd_enable;
+static uint8_t     buf_rd_byte_num;
 int jadard_touch_proc_init(void);
 
 #endif

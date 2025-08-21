@@ -31,6 +31,9 @@
 #include "sgm41542_charger.h"
 #include "sgm41542_iio.h"
 #include <linux/hardware_info.h>
+//+P86801EA2_896 sgm41542_request_dpdm experiences a deadlock, causing the system to crash
+#include "wt_chg.h"
+//-P86801EA2_896sgm41542_request_dpdm experiences a deadlock, causing the system to crash
 //#include "sgm41542_reg.h"
 
 #define CHARGER_IC_NAME "SGM41543D"
@@ -1401,7 +1404,7 @@ static void sgm41542_rerun_apsd_workfunc(struct work_struct *work)
 	if(!sgm41542_wake_active(&sgm_chg->sgm41542_apsd_wake_source)){
 		sgm41542_stay_awake(&sgm_chg->sgm41542_apsd_wake_source);
 	}
-
+#if 0
 	if(!sgm_chg->apsd_rerun){
 		pr_err("wt rerun apsd begin\n");
 		sgm_chg->apsd_rerun = true;
@@ -1410,6 +1413,21 @@ static void sgm41542_rerun_apsd_workfunc(struct work_struct *work)
 		if (sgm_chg->usb_online || (!sgm_chg->init_bc12_detect))
 			sgm_chg->init_bc12_detect = true;
 			sgm41542_enable_bc12_detect(sgm_chg);
+	}
+#endif
+	if ((!sgm_chg->init_bc12_detect)
+			|| (sgm_chg->usb_online
+					&& (sgm_chg->usb_type == POWER_SUPPLY_TYPE_USB_FLOAT
+						|| sgm_chg->usb_type == POWER_SUPPLY_TYPE_USB))) {
+
+		pr_err("wt rerun apsd begin\n");
+		sgm_chg->init_bc12_detect = true;
+		sgm_chg->apsd_rerun = true;
+		sgm41542_request_dpdm(sgm_chg, true);
+
+		mdelay(20);
+		sgm41542_enable_bc12_detect(sgm_chg);
+
 	}
 
 #if 0
@@ -1983,6 +2001,16 @@ static void sgm41542_charger_check_adapter_workfunc(struct work_struct *work)
 
 }
 
+static void sgm41542_charger_set_hiz_workfunc(struct work_struct *work)
+{
+	struct sgm41542_device *sgm_chg = container_of(work,
+								struct sgm41542_device, set_hiz_work.work);
+
+	dev_err(sgm_chg->dev, "sgm41542_charger_set_hiz_workfunc \n");
+
+	sgm41542_set_vndpm(sgm_chg, SGM41542_VINDPM_4700mV);
+}
+
 static void sgm41542_charger_irq_workfunc(struct work_struct *work)
 {
 	int ret;
@@ -1991,7 +2019,9 @@ static void sgm41542_charger_irq_workfunc(struct work_struct *work)
 	bool prev_pg;
 	bool prev_vbus_gd;
 	int i;
-
+//+P86801EA2_896 sgm41542_request_dpdm experiences a deadlock, causing the system to crash
+	extern int wt_chg_probe_status;
+//-P86801EA2_896 sgm41542_request_dpdm experiences a deadlock, causing the system to crash
 	struct sgm41542_device *sgm_chg = container_of(work,
 								struct sgm41542_device, irq_work.work);
 
@@ -2033,9 +2063,21 @@ static void sgm41542_charger_irq_workfunc(struct work_struct *work)
 
 	if (!prev_vbus_gd && sgm_chg->vbus_good) {
 		dev_err(sgm_chg->dev, "upm6918 adapter/usb inserted\n");
+		sgm_chg->init_bc12_detect = true;
+		sgm41542_set_vndpm(sgm_chg, SGM41542_VINDPM_5400mV);
+		schedule_delayed_work(&sgm_chg->set_hiz_work, msecs_to_jiffies(1600));
 		if (sgm_chg->usb_online) {
 			msleep(200);
 		}
+
+		//+P240311-07714,liwei19.wt,modify,2024/03/18, DUT connects to PD HUB with mouse or
+		//+USB drive, but cannot recognize mouse or USB drive after inserting a charger.
+		if(sgm_chg->apsd_rerun == 0)
+		{
+			sgm41542_request_dpdm(sgm_chg,true);
+		}
+		//-P240311-07714,liwei19.wt,modify,2024/03/18, DUT connects to PD HUB with mouse or
+		//-USB drive, but cannot recognize mouse or USB drive after inserting a charger.
 		sgm41542_set_chg_enable(sgm_chg, true);
 	} else if (prev_vbus_gd && !sgm_chg->vbus_good) {
 		sgm_chg->vbus_type = SGM41542_VBUS_NONE;
@@ -2047,11 +2089,22 @@ static void sgm41542_charger_irq_workfunc(struct work_struct *work)
 		cancel_delayed_work(&sgm_chg->check_adapter_work);
 		cancel_delayed_work(&sgm_chg->detect_work);
 		cancel_delayed_work(&sgm_chg->monitor_work);
+		cancel_delayed_work(&sgm_chg->set_hiz_work);
 		dev_err(sgm_chg->dev, "upm6918 adapter/usb removed\n");
 		sgm41542_update_wtchg_work(sgm_chg);
 		goto irq_exit;
 	}
 //P231102-08573 gudi.wt 20231128,remove rerun for upm6918
+
+	if (sgm_chg->vbus_type == SGM41542_VBUS_USB_DCP
+			|| sgm_chg->vbus_type == SGM41542_VBUS_NONSTAND_1A
+			|| sgm_chg->vbus_type == SGM41542_VBUS_NONSTAND_1P5A
+			|| sgm_chg->vbus_type == SGM41542_VBUS_USB_AFC
+			|| sgm_chg->vbus_type == SGM41542_VBUS_USB_HVDCP
+			|| sgm_chg->vbus_type == SGM41542_VBUS_USB_HVDCP3) {
+			goto irq_exit;
+	}
+
 	if (sgm_chg->vbus_good && sgm_chg->usb_online) {
 		sgm41542_get_vbus_type(sgm_chg);
 
@@ -2222,7 +2275,7 @@ static int sgm41542_iio_write_raw(struct iio_dev *indio_dev,
 			if (val1 == 2) {
 				sgm_chg->bc12_float_check++;
 			}
-			sgm_chg->apsd_rerun = false;
+			//sgm_chg->apsd_rerun = false;
 			schedule_delayed_work(&sgm_chg->rerun_apsd_work, msecs_to_jiffies(10));
 		}
 		break;
@@ -2589,6 +2642,7 @@ static int sgm41542_charger_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&sgm_chg->detect_work, sgm41542_charger_detect_workfunc);
 	INIT_DELAYED_WORK(&sgm_chg->monitor_work, sgm41542_monitor_workfunc);
 	INIT_DELAYED_WORK(&sgm_chg->rerun_apsd_work, sgm41542_rerun_apsd_workfunc);
+	INIT_DELAYED_WORK(&sgm_chg->set_hiz_work, sgm41542_charger_set_hiz_workfunc);
 
 	ret = sysfs_create_group(&sgm_chg->dev->kobj, &sgm41542_attr_group);
 	if (ret) {

@@ -102,7 +102,11 @@ struct rt_pd_manager_data {
 #ifdef CONFIG_WT_QGKI
 extern int charger_notifier_call_chain(unsigned long val, void *v);
 #endif
-
+//+P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+#ifdef CONFIG_QGKI_BUILD
+extern bool batt_hv_disable;
+#endif
+//-P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
 static struct rt_pd_manager_data *g_rpmd = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
@@ -117,6 +121,7 @@ static struct rt_pd_manager_data *g_rpmd = NULL;
 enum iio_psy_property {
 	RT1711_PD_ACTIVE = 0,
 	RT1711_PD_USB_SUSPEND_SUPPORTED,
+	RT1711_PD_INPUT_SUSPEND,
 	RT1711_PD_IN_HARD_RESET,
 	RT1711_PD_CURRENT_MAX,
 	RT1711_PD_VOLTAGE_MIN,
@@ -128,17 +133,21 @@ enum iio_psy_property {
 	RT1711_MAIN_CHARGE_APSD_RERUN,
 	RT1711_CHARGING_ENABLED,
 	RT1711_MAIN_CHARGER_HZ,
-	POWER_SUPPLY_IIO_PROP_MAX,
 //+ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 	RT1711_HV_DIS_DETECT,
 //-ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 	RT1711_CHARGE_PG_STAT,
 	RT1711_VBUS_VAL_NOW,
+	//Note: Please add iio before it
+//+P86801AA1-13688, liwei19.wt, modify, 20241015, Resolve the panic caused by channel overflow
+	POWER_SUPPLY_IIO_PROP_MAX,
+//-P86801AA1-13688, liwei19.wt, modify, 20241015, Resolve the panic caused by channel overflow
 };
 
 static const char * const iio_channel_map[] = {
 		[RT1711_PD_ACTIVE] = "pd_active",
         [RT1711_PD_USB_SUSPEND_SUPPORTED] = "pd_usb_suspend_supported",
+        [RT1711_PD_INPUT_SUSPEND] = "pd_input_suspend",
         [RT1711_PD_IN_HARD_RESET] = "pd_in_hard_reset",
         [RT1711_PD_CURRENT_MAX] = "pd_current_max",
         [RT1711_PD_VOLTAGE_MIN] = "pd_voltage_min",
@@ -423,8 +432,10 @@ static void usb_dwork_handler(struct work_struct *work)
 	union power_supply_propval val = {.intval = 0};
 //+ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 #ifdef CONFIG_QGKI_BUILD
-	int ret_hv = 0;
-	union power_supply_propval val_hv = {.intval = 0};
+//+P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+	//int ret_hv = 0;
+	//union power_supply_propval val_hv = {.intval = 0};
+//-P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
 #endif
 //-ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 #if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
@@ -469,10 +480,12 @@ static void usb_dwork_handler(struct work_struct *work)
 				    ret, val.intval);
 //+ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 #ifdef CONFIG_QGKI_BUILD
-		if (val.intval == POWER_SUPPLY_TYPE_USB_PD) {
-			dev_info(rpmd->dev, "%s enter RT1711_HV_DIS_DETECT --\n", __func__);
-			ret_hv = smblib_get_prop(rpmd, RT1711_HV_DIS_DETECT, &val_hv);
-		}
+//+P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+		//if (val.intval == POWER_SUPPLY_TYPE_USB_PD) {
+			//dev_info(rpmd->dev, "%s enter RT1711_HV_DIS_DETECT --\n", __func__);
+			//ret_hv = smblib_get_prop(rpmd, RT1711_HV_DIS_DETECT, &val_hv);
+		//}
+//-P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
 #endif
 //-ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 #if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
@@ -680,6 +693,18 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			pd_sink_set_vol_and_cur(rpmd, rpmd->sink_mv_new,
 						rpmd->sink_ma_new,
 						noti->vbus_state.type);
+
+		if ((rpmd->sink_mv_new == 5000) && (rpmd->sink_ma_new == 0)) {
+			val.intval = 1;
+		} else if ((rpmd->sink_mv_new == 0) && (rpmd->sink_ma_new == 0)) {
+			//P240625-06947, liwei19.wt, modify, 20240720, disable hiz automatically after plug out the adapter
+			//val.intval = 2;
+			break;
+		} else {
+			val.intval = 0;
+		}
+		smblib_set_prop(rpmd, RT1711_PD_INPUT_SUSPEND, &val);
+
 		break;
 	case TCP_NOTIFY_SOURCE_VBUS:
 		dev_info(rpmd->dev, "%s source vbus %dmV\n",
@@ -737,7 +762,12 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			    old_state == TYPEC_ATTACHED_CUSTOM_SRC ||
 			    old_state == TYPEC_ATTACHED_DBGACC_SNK) &&
 			    new_state == TYPEC_UNATTACHED) {
-			//dev_info(rpmd->dev, "%s Charger plug out\n", __func__);
+			dev_info(rpmd->dev, "%s Charger plug out\n", __func__);
+			//+P240625-06947, liwei19.wt, modify, 20240720, disable hiz automatically after plug out the adapter
+			val.intval = 2;
+
+			smblib_set_prop(rpmd, RT1711_PD_INPUT_SUSPEND, &val);
+			//-P240625-06947, liwei19.wt, modify, 20240720, disable hiz automatically after plug out the adapter
 #ifdef CONFIG_WT_QGKI
 			dev_info(rpmd->dev, "%s:Charger plug out flag:%d,%d,%d\n", __func__, rpmd->charge_insert_flag, rpmd->otg_trigger_flag,rpmd->otg_exit_flag);
 			val.intval = TYPEC_UNATTACHED;
@@ -1068,6 +1098,18 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 				POWER_SUPPLY_PROP_PD_USB_SUSPEND_SUPPORTED,
 					&val);
 #endif
+//+P240514-05240, liwei19.wt 20240531, When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+#ifdef CONFIG_QGKI_BUILD
+			if (batt_hv_disable) {
+				tcpm_set_remote_power_cap(rpmd->tcpc, 5000, 2000);
+				dev_info(rpmd->dev, "%s: set pd vbus 5V, ibus 2A\n", __func__);
+			} else {
+				tcpm_set_remote_power_cap(rpmd->tcpc, 9000, 1670);
+				dev_info(rpmd->dev, "%s: set pd vbus 9V, ibus 1670\n", __func__);
+			}
+#endif
+//-P240514-05240, liwei19.wt 20240531, When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+
 		case PD_CONNECT_PE_READY_SRC:
 		case PD_CONNECT_PE_READY_SRC_PD30:
 			/* update chg->pd_active */
@@ -1535,7 +1577,9 @@ static int rt_cclogic_set_prop(struct power_supply *psy,
 			if (pval >= 7500) {
 				tcpm_set_remote_power_cap(rpmd->tcpc, 9000, 1670);
 			} else if (pval < 7500) {
-				tcpm_set_remote_power_cap(rpmd->tcpc, 5000, 3000);
+//+P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
+				tcpm_set_remote_power_cap(rpmd->tcpc, 5000, 2000);
+//-P86801AA2-3318 When selecting to exit fast charging on the UI interface, the device cannot exit fast charging.
 			}
 			pr_err("%s tcpm_set_remote_power_cap : %d --\n", __func__, pval);
 			break;

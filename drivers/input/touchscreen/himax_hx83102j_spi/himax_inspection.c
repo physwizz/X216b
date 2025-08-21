@@ -2520,6 +2520,8 @@ static int himax_self_test_data_init(void)
 // +P86801AA1 peiyuexiang.wt,add,20230704,compatible with lide
 	if (strstr(Lcm_name_tp,"lide_hx83102j_wt_dsi_vdo_90hz_hsd")) {
 		file_name_2 = "hx_criteria_hx83102j_lide.csv";
+	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc")) {
+		file_name_2 = "hx_criteria_hx83102j_starry_agc.csv";
 	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt")) {
 		file_name_2 = "hx_criteria_hx83102j_starry.csv";
 	}

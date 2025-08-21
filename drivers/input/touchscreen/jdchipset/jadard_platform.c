@@ -593,6 +593,7 @@ static int jadard_common_suspend(struct device *dev)
     return 0;
 }
 
+#ifndef JD_RESUME_NOT_WAIT_FW
 static int jadard_common_resume(struct device *dev)
 {
     struct jadard_ts_data *ts = dev_get_drvdata(dev);
@@ -602,6 +603,7 @@ static int jadard_common_resume(struct device *dev)
 
     return 0;
 }
+#endif
 
 #if defined(JD_CONFIG_FB)
 #ifdef JD_CONFIG_DRM
@@ -658,10 +660,20 @@ int jadard_fb_notifier_callback(struct notifier_block *self,
         switch (*blank) {
         case DRM_PANEL_BLANK_UNBLANK:
             if (DRM_PANEL_EARLY_EVENT_BLANK == event) {
+#if defined(JD_RESUME_NOT_WAIT_FW)
+                JD_I("resume: event = %lu, TP_RESUME_THREAD\n", event);
+                queue_delayed_work(ts->jadard_resume_wq, &ts->jadard_resume_work,
+                    msecs_to_jiffies(JD_RESUME_DELAY_TIME));
+#else
                 JD_I("resume: event = %lu, Skipped\n", event);
+#endif
             } else if (DRM_PANEL_EVENT_BLANK == event) {
+#if defined(JD_RESUME_NOT_WAIT_FW)
+                JD_I("resume: event = %lu, Skipped\n", event);
+#else
                 JD_I("resume: event = %lu, TP_RESUME\n", event);
                 jadard_common_resume(ts->dev);
+#endif
             }
             break;
 

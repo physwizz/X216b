@@ -730,6 +730,9 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	} else if (chipid == 0xee4b) {
 		hardwareinfo_set_prop(HARDWARE_FRONT_CAM,"SC520CS-TXD");
 		hardwareinfo_set_prop(HARDWARE_FRONT_CAM_MOUDULE_ID,"TXD");
+	} else if (chipid == 0x05a2) {
+		hardwareinfo_set_prop(HARDWARE_FRONT_CAM,"GC05A2-CXT");
+		hardwareinfo_set_prop(HARDWARE_FRONT_CAM_MOUDULE_ID,"CXT");
 	}
 	//-bug P86801AA1-1797, qinduilin.wt, ADD, 20230427, P86801AA1 camera bringup.
 	return rc;
@@ -740,12 +743,19 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 {
 	int rc = 0, pkt_opcode = 0;
 	struct cam_control *cmd = (struct cam_control *)arg;
-	struct cam_sensor_power_ctrl_t *power_info =
-		&s_ctrl->sensordata->power_info;
+	//+qcom CR3875406, libo7, MODIFY, 20250227, P86801AA1
+	//struct cam_sensor_power_ctrl_t *power_info =
+	//	&s_ctrl->sensordata->power_info;
+	struct cam_sensor_power_ctrl_t *power_info = NULL;
+	//-qcom CR3875406, libo7, MODIFY, 20250227, P86801AA1
 	if (!s_ctrl || !arg) {
 		CAM_ERR(CAM_SENSOR, "s_ctrl is NULL");
 		return -EINVAL;
 	}
+
+	//+qcom CR3875406, libo7, MODIFY, 20250227, P86801AA1
+	power_info = &s_ctrl->sensordata->power_info;
+	//-qcom CR3875406, libo7, MODIFY, 20250227, P86801AA1
 
 	if (cmd->op_code != CAM_SENSOR_PROBE_CMD) {
 		if (cmd->handle_type != CAM_HANDLE_USER_POINTER) {
@@ -1246,7 +1256,8 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
 	temp_id = s_ctrl->sensordata->slave_info.sensor_id;
 	if(temp_id == CAMERA_FRONT_W11_HI556 ||
 		temp_id == CAMERA_FRONT_W11_C5590 ||
-		temp_id == CAMERA_FRONT_W11_SC520CS){
+		temp_id == CAMERA_FRONT_W11_SC520CS ||
+		temp_id == CAMERA_FRONT_W11_GC05A2){
 		cam_sensor_id_stats_front.cam_id = temp_id;
 		cam_sensor_id_stats_front.cam_stats = CAM_STATS_TURE;
 	}
@@ -1282,20 +1293,23 @@ int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
 {
 	struct cam_sensor_power_ctrl_t *power_info;
 	struct cam_hw_soc_info *soc_info;
+	int temp_id = 0;
 	int rc = 0;
 
 	//+P86801AA1 huangxiaofeng.wt,ADD,2023/08/01, Added the status of the front camera, fixed the issue of using front and rear shots together
+	temp_id = s_ctrl->sensordata->slave_info.sensor_id;
 	CAM_INFO(CAM_SENSOR, "cam_sensor_power_down");
 	if(cam_sensor_id_stats_front.cam_stats == CAM_STATS_TURE &&
-		(cam_sensor_id_stats_front.cam_id  == CAMERA_FRONT_W11_HI556||
-		cam_sensor_id_stats_front.cam_id == CAMERA_FRONT_W11_C5590 ||
-		cam_sensor_id_stats_front.cam_id == CAMERA_FRONT_W11_SC520CS)){
+		(temp_id  == CAMERA_FRONT_W11_HI556||
+		temp_id == CAMERA_FRONT_W11_C5590 ||
+		temp_id == CAMERA_FRONT_W11_SC520CS ||
+		temp_id == CAMERA_FRONT_W11_GC05A2)){
 		cam_sensor_id_stats_front.cam_stats = CAM_STATS_FALSE;
 		cam_sensor_id_stats_front.last_voltage = 0;
 	}else if(cam_sensor_id_stats_rear.cam_stats == CAM_STATS_TURE && 
-		(cam_sensor_id_stats_rear.cam_id == CAMERA_REAR_W11_HI846 ||
-		cam_sensor_id_stats_rear.cam_id == CAMERA_REAR_W11_c8496 ||
-		cam_sensor_id_stats_rear.cam_id == CAMERA_REAR_W11_GC08A3)){
+		(temp_id == CAMERA_REAR_W11_HI846 ||
+		temp_id == CAMERA_REAR_W11_c8496 ||
+		temp_id == CAMERA_REAR_W11_GC08A3)){
 		cam_sensor_id_stats_rear.cam_stats = CAM_STATS_FALSE;
 		cam_sensor_id_stats_rear.last_voltage = 0;
 	}

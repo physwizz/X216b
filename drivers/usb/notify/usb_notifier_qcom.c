@@ -207,8 +207,10 @@ static int ccic_usb_handle_notification(struct notifier_block *nb,
 		pr_info("%s: Turn On Device(UFP)\n", __func__);
 		dwc3_max_speed_setting(usb_status.sub3);
 		send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 1);
+#ifdef CONFIG_DISABLE_LOCKSCREEN_USB_RESTRICTION
 		if (is_blocked(o_notify, NOTIFY_BLOCK_TYPE_CLIENT))
 			return -EPERM;
+#endif
 		break;
 	case USB_STATUS_NOTIFY_DETACH:
 		if (pdata->is_host) {

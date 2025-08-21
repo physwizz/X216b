@@ -801,6 +801,23 @@ const struct cts_firmware *cts_request_firmware(const struct cts_device *cts_dev
 #endif /* CFG_CTS_FIRMWARE_IN_FS */
 	}
 // -P86801AA1 lihesong.wt,add,20230920,compatible dijin
+// +P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
+    if (strstr(Lcm_name_tp,"xinxian_icnl9951r_wt_dsi_vdo_90hz_mdt_agc")) {
+#ifdef CFG_CTS_FIRMWARE_IN_FS
+#ifndef CFG_CTS_FOR_GKI
+    if (is_filesystem_mounted(CFG_CTS_FIRMWARE_FILEPATH_XINXIAN_AGC)) {
+#endif
+        firmware_from_file = cts_request_newer_firmware_from_fs(cts_dev,
+#ifdef CFG_CTS_FW_UPDATE_FILE_LOAD
+        cts_dev->config_fw_name[0] ? cts_dev->config_fw_name : CFG_CTS_FIRMWARE_FILENAME_XINXIAN_AGC,
+#else
+        CFG_CTS_FIRMWARE_FILENAME_XINXIAN_AGC,
+#endif
+        curr_firmware_ver);
+	}
+#endif /* CFG_CTS_FIRMWARE_IN_FS */
+	}
+// -P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
     return firmware_from_file ? firmware_from_file : firmware_builtin;
 }
 

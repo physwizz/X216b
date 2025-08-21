@@ -82,6 +82,10 @@
 #define CFG_CTS_FIRMWARE_FILENAME_DIJIN       "chipone_icnl9951r_fw_dijin.bin"
 #define CFG_CTS_FIRMWARE_FILEPATH_DIJIN       "/vendor/firmware/chipone_icnl9951r_fw_dijin.bin"
 // -P86801AA1 lihesong.wt,add,20230920,compatible dijin
+// +P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
+#define CFG_CTS_FIRMWARE_FILENAME_XINXIAN_AGC      "chipone_icnl9951r_fw_xinxian_agc.bin"
+#define CFG_CTS_FIRMWARE_FILEPATH_XINXIAN_AGC       "/vendor/firmware/chipone_icnl9951r_fw_xinxian_agc.bin"
+// -P86801AA1 zhangjian.wt,add,20241224,compatible xinxian_agc
 #endif /* CFG_CTS_FIRMWARE_IN_FS */
 
 #define CFG_CTS_FACTORY_LIMIT_FILENAME      "chipone_limit.bin"

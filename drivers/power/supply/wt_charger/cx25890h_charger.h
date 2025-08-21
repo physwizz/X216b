@@ -80,6 +80,8 @@
 #define CX25890H_REG_03              0x03
 #define CX25890H_BAT_LOADEN_MASK     0x80
 #define CX25890H_BAT_LOAEN_SHIFT     7
+#define CX25890H_BAT_LOADEN_ENABLE   1
+
 #define CX25890H_WDT_RESET_MASK      0x40
 #define CX25890H_WDT_RESET_SHIFT     6
 #define CX25890H_WDT_RESET           1
@@ -425,8 +427,8 @@
 #define BC12_FLOAT_CHECK_MAX 1
 
 /*+P231130-06621 liwei19.wt 20231218,reduce the number of AFC and QC identification*/
-#define AFC_DETECT_TIME   25
-#define QC_DETECT_TIME    10
+#define AFC_DETECT_TIME   30
+#define QC_DETECT_TIME    15
 /*-P231130-06621 liwei19.wt 20231218,reduce the number of AFC and QC identification*/
 
 enum cx25890h_part_no {
@@ -520,6 +522,7 @@ struct cx25890h_device {
 	struct delayed_work rerun_apsd_work;
 	struct delayed_work detect_work;
 	struct delayed_work check_adapter_work;
+	struct delayed_work term_detect_work;
 
 	enum cx25890h_part_no part_no;
 	int revision;
@@ -577,6 +580,5 @@ int cx25890h_get_vbat_volt(struct cx25890h_device *cx_chg,  int *val);
 int cx25890h_get_ibat_curr(struct cx25890h_device *cx_chg,  int *val);
 
 MODULE_LICENSE("GPL v2");
-
 #endif
 

@@ -35,6 +35,7 @@
 extern bool focal_earjack_mode_status;
 extern bool himax_earjack_mode_status;
 extern bool chipone_earjack_mode_status;
+extern bool jd_earphone_mode_status;
 #endif
 //-P86801AA1,peiyuexiang.wt,modify,2023/07/06,add tp earjack_mode
 
@@ -1012,6 +1013,7 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		focal_earjack_mode_status = 0;
 		himax_earjack_mode_status = 0;
 		chipone_earjack_mode_status = 0;
+		jd_earphone_mode_status = 0;
 		earjack_notifier_call_chain_for_tp(EARJACK_PLUG_OUT,NULL);
 //		pr_err("TP_LOG:%s:[tp earjack]EARJACK_PLUG_OUT",
 //			__func__);
@@ -1019,6 +1021,7 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		focal_earjack_mode_status = 1;
 		himax_earjack_mode_status = 1;
 		chipone_earjack_mode_status = 1;
+		jd_earphone_mode_status = 1;
 		earjack_notifier_call_chain_for_tp(EARJACK_PLUG_IN,NULL);
 //		pr_err("TP_LOG:%s:[tp earjack]EARJACK_PLUG_IN",
 //			__func__);

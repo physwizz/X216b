@@ -19,29 +19,29 @@ static int PST_GetFrameOfRawData_Number;
 static uint16_t MP_Recb_Timeout;
 
 /* {
- *  {Skip_OpenData_Frame_Number, Get_OpenData_Frame_Number},
- *  {Skip_ShortData_Frame_Number, Get_ShortData_Frame_Number},
- *  {Skip_NormalSBDev_Frame_Number, Get_NormalSBDev_Frame_Number},
- *  {Skip_NormalActiveNoise_Frame_Number, Get_NormalActiveNoise_Frame_Number},
- *  {Skip_NormalIdleData_Frame_Number, Get_NormalIdleData_Frame_Number},
- *  {Skip_NormalIdleNoise_Frame_Number, Get_NormalIdleNoise_Frame_Number},
- *  {Skip_LpwugSBDev_Frame_Number, Get_LpwugSBDev_Frame_Number},
- *  {Skip_LpwugActiveNoise_Frame_Number, Get_LpwugActiveNoise_Frame_Number},
- *  {Skip_LpwugIdleData_Frame_Number, Get_LpwugIdleData_Frame_Number},
- *  {Skip_LpwugIdleNoise_Frame_Number, Get_LpwugIdleNoise_Frame_Number}
+*  {Skip_OpenData_Frame_Number, Get_OpenData_Frame_Number, Test or not},
+ *  {Skip_ShortData_Frame_Number, Get_ShortData_Frame_Number, Test or not},
+ *  {Skip_NormalSBDev_Frame_Number, Get_NormalSBDev_Frame_Number, Test or not},
+ *  {Skip_NormalActiveNoise_Frame_Number, Get_NormalActiveNoise_Frame_Number, Test or not},
+ *  {Skip_NormalIdleData_Frame_Number, Get_NormalIdleData_Frame_Number, Test or not},
+ *  {Skip_NormalIdleNoise_Frame_Number, Get_NormalIdleNoise_Frame_Number, Test or not},
+ *  {Skip_LpwugSBDev_Frame_Number, Get_LpwugSBDev_Frame_Number, Test or not},
+ *  {Skip_LpwugActiveNoise_Frame_Number, Get_LpwugActiveNoise_Frame_Number, Test or not},
+ *  {Skip_LpwugIdleData_Frame_Number, Get_LpwugIdleData_Frame_Number, Test or not},
+ *  {Skip_LpwugIdleNoise_Frame_Number, Get_LpwugIdleNoise_Frame_Number, Test or not}
  * }
  */
-uint16_t jd_pst_global_variable[JD_SORTING_ACTIVE_ITEM][2] = {
-    {3, 3},
-    {3, 3},
-    {3, 3},
-    {3, 50},
-    {3, 3},
-    {3, 50},
-    {3, 3},
-    {3, 50},
-    {3, 3},
-    {3, 50}
+uint16_t jd_pst_global_variable[JD_SORTING_ACTIVE_ITEM][3] = {
+    {3, 3,  0},
+    {3, 3,  0},
+    {3, 3,  0},
+    {3, 50, 0},
+    {3, 3,  0},
+    {3, 50, 0},
+    {3, 3,  0},
+    {3, 50, 0},
+    {3, 3,  0},
+    {3, 50, 0}
 };
 
 static int jd_test_data_pop_out(char *rslt_buf, char *filepath, int result)
@@ -1762,8 +1762,17 @@ static int jadard_set_sorting_threshold(char **result, int data_lines)
     }
 
     for (item_num = 0; item_num < JD_SORTING_ACTIVE_ITEM; item_num++) {
-        if (!th_parsed[item_num])
-            JD_I("Sorting threshold not found for item %s\n", jd_action_item_name[item_num]);
+        if (!th_parsed[item_num]) {
+            jd_pst_global_variable[item_num][2] = 0;
+            JD_D("Sorting threshold not found for item %s(%d)\n", jd_action_item_name[item_num], jd_pst_global_variable[item_num][2]);
+        } else {
+            if (jd_pst_global_variable[item_num][2]) {
+                jd_pst_global_variable[item_num][2] = 1;
+            } else {
+                jd_pst_global_variable[item_num][2] = 0;
+            }
+            JD_D("Sorting threshold found item %s(%d)\n", jd_action_item_name[item_num], jd_pst_global_variable[item_num][2]);
+        }
     }
     kfree(th_parsed);
 
@@ -1835,7 +1844,11 @@ static int jadard_remove_space_cr(const struct firmware *file_entry, char **resu
 
     for (item_num = 0; item_num < JD_SORTING_ACTIVE_ITEM; item_num++) {
         if (!val_parsed[item_num]) {
+            jd_pst_global_variable[item_num][2] = 0;
             JD_D("Gloable variable not found for item %s\n", jd_action_item_name[item_num]);
+        } else {
+            jd_pst_global_variable[item_num][2] = 1;
+            JD_D("Gloable variable found for item %s\n", jd_action_item_name[item_num]);
         }
     }
     kfree(val_parsed);
@@ -1881,7 +1894,7 @@ static int jadard_parse_sorting_threshold_file(void)
 {
     int err = JD_SORTING_OK, i;
     const struct firmware *file_entry = NULL;
-    char *file_name = "jd_sorting_threshold.txt";
+    char *file_name = "jd_sorting_threshold_xinxian.txt";
     char **result = NULL;
     int data_lines = (pjadard_ic_data->JD_X_NUM + 1) * JD_SORTING_ACTIVE_ITEM;
 #if (JD_PRODUCT_TYPE == 2)
@@ -2058,12 +2071,10 @@ static int jadard_sorting_test(void)
 
     JD_I("%s: enter\n", __func__);
 
-#ifdef JD_ZERO_FLASH
     if (pjadard_ts_data->fw_ready == false) {
         JD_E("%s: FW was not ready, can`t running ITO test\n", __func__);
         return JD_SORTING_UPGRADE_FW_ERR;
     }
-#endif
 
     pjadard_ts_data->ito_sorting_active = true;
     mutex_lock(&(pjadard_ts_data->sorting_active));
@@ -2127,8 +2138,13 @@ static int jadard_sorting_test(void)
 
     /* START ReCB */
     g_module_fp.fp_PorInit();
+#if (JD_PRODUCT_TYPE == 2)
+    g_module_fp.fp_soft_reset();
+    msleep(800); /* 6*4*2*16.6=796.8 */
+#else
     g_module_fp.fp_ResetMCU();
-    msleep(300);
+    msleep(300); /* 4*4*1*16.6=265.6 */
+#endif
     /* END ReCB */
     g_module_fp.fp_Fw_DBIC_Off();
     Soc_Debug_Number = 0;
@@ -2154,58 +2170,76 @@ static int jadard_sorting_test(void)
     JD_I("JD_SORTING_SLEEP_OUT: End %d\n\n", ret);
 #endif
 
-    /* 1.Open Test */
-    JD_I("[JD_SORTING_OPEN_CHECK]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_OPEN_CHECK, false);
-    JD_I("JD_SORTING_OPEN_CHECK: End %d\n\n", ret);
+    if (jd_pst_global_variable[0][2] == 1) {
+        /* 1.Open Test */
+        JD_I("[JD_SORTING_OPEN_CHECK]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_OPEN_CHECK, false);
+        JD_I("JD_SORTING_OPEN_CHECK: End %d\n\n", ret);
+    }
 
-    /* 2. Short Test */
-    JD_I("[JD_SORTING_SHORT_CHECK]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_SHORT_CHECK, false);
-    JD_I("JD_SORTING_SHORT_CHECK: End %d\n\n", ret);
+    if (jd_pst_global_variable[1][2] == 1) {
+        /* 2. Short Test */
+        JD_I("[JD_SORTING_SHORT_CHECK]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_SHORT_CHECK, false);
+        JD_I("JD_SORTING_SHORT_CHECK: End %d\n\n", ret);
+    }
 
-    /* 3. NORMAL ACTIVE SB_DEV Test */
-    JD_I("[JD_SORTING_NORMALACTIVE_SB_DEV]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_NORMALACTIVE_SB_DEV, false);
-    JD_I("JD_SORTING_NORMALACTIVE_SB_DEV: End %d\n\n", ret);
+    if (jd_pst_global_variable[2][2] == 1) {
+        /* 3. NORMAL ACTIVE SB_DEV Test */
+        JD_I("[JD_SORTING_NORMALACTIVE_SB_DEV]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_NORMALACTIVE_SB_DEV, false);
+        JD_I("JD_SORTING_NORMALACTIVE_SB_DEV: End %d\n\n", ret);
+    }
 
-    /* 4. NORMAL ACTIVE NOISE Test */
-    JD_I("[JD_SORTING_NORMALACTIVE_NOISE]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_NORMALACTIVE_NOISE, false);
-    JD_I("JD_SORTING_NORMALACTIVE_NOISE: End %d\n\n", ret);
+    if (jd_pst_global_variable[3][2] == 1) {
+        /* 4. NORMAL ACTIVE NOISE Test */
+        JD_I("[JD_SORTING_NORMALACTIVE_NOISE]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_NORMALACTIVE_NOISE, false);
+        JD_I("JD_SORTING_NORMALACTIVE_NOISE: End %d\n\n", ret);
+    }
 
-#if JD_SORTING_NORMALIDLE_CHECK
-    /* 5. NORMAL IDLE RAWDATA CHECK Test */
-    JD_I("[JD_SORTING_NORMALIDLE_RAWDATA_CHECK]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_NORMALIDLE_RAWDATA_CHECK, false);
-    JD_I("JD_SORTING_NORMALIDLE_RAWDATA_CHECK: End %d\n\n", ret);
+    if (jd_pst_global_variable[4][2] == 1) {
+        /* 5. NORMAL IDLE RAWDATA CHECK Test */
+        JD_I("[JD_SORTING_NORMALIDLE_RAWDATA_CHECK]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_NORMALIDLE_RAWDATA_CHECK, false);
+        JD_I("JD_SORTING_NORMALIDLE_RAWDATA_CHECK: End %d\n\n", ret);
+    }
 
-    /* 6. NORMAL IDLE NOISE Test */
-    JD_I("[JD_SORTING_NORMALIDLE_NOISE]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_NORMALIDLE_NOISE, false);
-    JD_I("JD_SORTING_NORMALIDLE_NOISE: End %d\n\n", ret);
-#endif
+    if (jd_pst_global_variable[5][2] == 1) {
+        /* 6. NORMAL IDLE NOISE Test */
+        JD_I("[JD_SORTING_NORMALIDLE_NOISE]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_NORMALIDLE_NOISE, false);
+        JD_I("JD_SORTING_NORMALIDLE_NOISE: End %d\n\n", ret);
+    }
 
 #if JD_SORTING_LPWUG_CHECK
-    /* 7. LPWUG ACTIVE SB_DEV Test */
-    JD_I("[JD_SORTING_LPWUGACTIVE_SB_DEV]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_LPWUGACTIVE_SB_DEV, false);
-    JD_I("JD_SORTING_LPWUGACTIVE_SB_DEV: End %d\n\n", ret);
+    if (jd_pst_global_variable[6][2] == 1) {
+        /* 7. LPWUG ACTIVE SB_DEV Test */
+        JD_I("[JD_SORTING_LPWUGACTIVE_SB_DEV]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_LPWUGACTIVE_SB_DEV, false);
+        JD_I("JD_SORTING_LPWUGACTIVE_SB_DEV: End %d\n\n", ret);
+    }
 
-    /* 8. LPWUG ACTIVE NOISE Test */
-    JD_I("[JD_SORTING_LPWUGACTIVE_NOISE]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_LPWUGACTIVE_NOISE, false);
-    JD_I("JD_SORTING_LPWUGACTIVE_NOISE: End %d\n\n", ret);
+    if (jd_pst_global_variable[7][2] == 1) {
+        /* 8. LPWUG ACTIVE NOISE Test */
+        JD_I("[JD_SORTING_LPWUGACTIVE_NOISE]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_LPWUGACTIVE_NOISE, false);
+        JD_I("JD_SORTING_LPWUGACTIVE_NOISE: End %d\n\n", ret);
+    }
 
-    /* 9. LPWUG IDLE RAWDATA CHECK Test */
-    JD_I("[JD_SORTING_LPWUGIDLE_RAWDATA_CHECK]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_LPWUGIDLE_RAWDATA_CHECK, false);
-    JD_I("JD_SORTING_LPWUGIDLE_RAWDATA_CHECK: End %d\n\n", ret);
+    if (jd_pst_global_variable[8][2] == 1) {
+        /* 9. LPWUG IDLE RAWDATA CHECK Test */
+        JD_I("[JD_SORTING_LPWUGIDLE_RAWDATA_CHECK]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_LPWUGIDLE_RAWDATA_CHECK, false);
+        JD_I("JD_SORTING_LPWUGIDLE_RAWDATA_CHECK: End %d\n\n", ret);
+    }
 
-    /* 10. LPWUG IDLE NOISE Test */
-    JD_I("[JD_SORTING_LPWUGIDLE_NOISE]\n");
-    ret += jadard_TestItem_Select(JD_SORTING_LPWUGIDLE_NOISE, false);
-    JD_I("JD_SORTING_LPWUGIDLE_NOISE: End %d\n\n", ret);
+    if (jd_pst_global_variable[9][2] == 1) {
+        /* 10. LPWUG IDLE NOISE Test */
+        JD_I("[JD_SORTING_LPWUGIDLE_NOISE]\n");
+        ret += jadard_TestItem_Select(JD_SORTING_LPWUGIDLE_NOISE, false);
+        JD_I("JD_SORTING_LPWUGIDLE_NOISE: End %d\n\n", ret);
+    }
 #endif
 
     jd_test_data_pop_out(jd_g_rslt_data, jd_g_file_path, ret);
@@ -2216,6 +2250,9 @@ static int jadard_sorting_test(void)
 
     /* Enter normal mode */
     jadard_pst_enter_normal_mode();
+#if (JD_PRODUCT_TYPE == 2)
+    g_module_fp.fp_PorInit();
+#endif
     g_module_fp.fp_soft_reset();
 #if (JD_PRODUCT_TYPE == 2)
     /* Unnecessary start mcu */
@@ -2228,10 +2265,10 @@ END_SORTING_TEST:
 
     JD_I("Sorting test result = %d \n", ret);
 
-	res = (ret != 0);
+    res = (ret != 0);
 #if defined(CONFIG_TOUCHSCREEN_JADARD_DEBUG)
-	res |= (jd_g_dbg_enable && (Soc_Debug_Number >= 6));
-	JD_D("SoC debug result = %d \n", Soc_Debug_Number);
+    res |= (jd_g_dbg_enable && (Soc_Debug_Number >= 6));
+    JD_D("SoC debug result = %d \n", Soc_Debug_Number);
 #endif
     if (res) {
         /* Return fail */

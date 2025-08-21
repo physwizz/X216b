@@ -672,7 +672,7 @@ static bool jadard_ts_diag_func(void)
 
     for (i = 0; i < y_num; i++) {
         for (j = 0; j < x_num; j++) {
-            if (DataType == JD_DATA_TYPE_Difference) {
+            if (DataType == JD_DATA_TYPE_Difference || DataType == JD_DATA_TYPE_LAPLACE) {
                 if (pjadard_ts_data->rawdata_little_endian) {
                     new_data = (((int8_t)rdata[index + 1] << 8) | rdata[index]);
                 } else {
@@ -768,11 +768,37 @@ static bool jadard_ts_diag_func(void)
     return true;
 }
 
+/* Mutual data thread */
+static bool jadard_ts_buf_func(void)
+{
+    uint16_t index = 0;
+    int x_num = pjadard_ic_data->JD_X_NUM;
+    int y_num = pjadard_ic_data->JD_Y_NUM;
+    uint16_t rdata_size = x_num * y_num * buf_rd_byte_num;
+
+    if (g_module_fp.fp_get_mutual_data(DataType, jd_buf, rdata_size) < 0) {
+        /* Time out, set -23131(Blue screen) */
+        for (index = 0; index < rdata_size; index++)
+            jd_buf[index] = 0xA5;
+        jd_diag_mutual_cnt++;
+
+        return false;
+    }
+    jd_diag_mutual_cnt++;
+
+    return true;
+}
+
 static void jadard_ts_diag_work_func(struct work_struct *work)
 {
     while (pjadard_ts_data->diag_thread_active) {
+        if (jd_g_buf_rd_enable) {
+            if (!jadard_ts_buf_func())
+                JD_E("%s : Read mutual data fail\n", __func__);
+        } else {
         if (!jadard_ts_diag_func())
             JD_E("%s : Get mutual data fail\n", __func__);
+        }
     }
 }
 
@@ -810,6 +836,7 @@ static ssize_t jadard_diag_write(struct file *filp, const char __user *buf,
         cancel_delayed_work_sync(&pjadard_ts_data->jadard_diag_delay_wrok);
     }
     ts->debug_diag_apk_enable = false;
+        jd_g_buf_rd_enable = false;
 
     DataType = JD_DATA_TYPE_RawData;
     KeepType = JD_KEEP_TYPE_NormalValue;
@@ -1216,6 +1243,152 @@ static struct file_operations jadard_proc_diag_apk_ops = {
     .read = seq_read,
     .release = seq_release,
     .write = jadard_diag_apk_write,
+};
+#endif
+
+static void *jadard_buf_rd_seq_start(struct seq_file *s, loff_t *pos)
+{
+    if (*pos >= 1) {
+        return NULL;
+    }
+
+    return (void *)((unsigned long) *pos + 1);
+}
+
+static void jadard_buf_rd_seq_stop(struct seq_file *s, void *v)
+{
+    /* Nothing to do */
+}
+
+static void *jadard_buf_rd_seq_next(struct seq_file *s, void *v, loff_t *pos)
+{
+    (*pos)++;
+    return NULL; /* if retun NULL, next step will stop */
+}
+
+static int jadard_buf_rd_seq_show(struct seq_file *s, void *v)
+{
+    int index, i;
+    int x_num = pjadard_ic_data->JD_X_NUM;
+    int y_num = pjadard_ic_data->JD_Y_NUM;
+
+    //seq_printf(s, "%d %d ", x_num, y_num);
+    jd_diag_mutual_cnt &= 0x7FFF;
+    seq_printf(s, "%d ", jd_diag_mutual_cnt);
+
+    for (index = 0; index < x_num * y_num * buf_rd_byte_num; index += buf_rd_byte_num) {
+        for (i = buf_rd_byte_num - 1; i >= 0; i--)
+            seq_printf(s, "%02X", jd_buf[index + i]);
+        seq_printf(s, " ");
+    }
+
+    seq_printf(s, "\n");
+
+    return 0;
+}
+
+/* start->show->next->stop */
+static struct seq_operations jadard_buf_rd_seq_ops = {
+    .start  = jadard_buf_rd_seq_start,
+    .stop   = jadard_buf_rd_seq_stop,
+    .next   = jadard_buf_rd_seq_next,
+    .show   = jadard_buf_rd_seq_show,
+};
+
+static int jadard_buf_rd_proc_open(struct inode *inode, struct file *file)
+{
+    return seq_open(file, &jadard_buf_rd_seq_ops);
+};
+
+/*
+ * DataType  => 1:RawData 2:Baseline 3:Difference 4:Listen 5:Label 6:Laplace Reserve:7~F(15)
+ */
+static ssize_t jadard_buf_rd_write(struct file *filp, const char __user *buf,
+                                    size_t len, loff_t *data)
+{
+    //struct jadard_ts_data *ts = pjadard_ts_data;
+    char buf_tmp[10] = {0};
+    uint32_t type = 0;
+    int i;
+
+    if (len >= sizeof(buf_tmp)) {
+        JD_I("%s: no command exceeds %ld chars.\n", __func__, sizeof(buf_tmp));
+        return -EFAULT;
+    }
+
+    if (copy_from_user(buf_tmp, buf, len - 1)) {
+        return -EFAULT;
+    }
+
+    if ((buf_tmp[0] == 't') && (buf_tmp[1] == ' ')) {
+        /* Cancel mutual data thread, if exist */
+        if (pjadard_ts_data->diag_thread_active) {
+            pjadard_ts_data->diag_thread_active = false;
+            cancel_delayed_work_sync(&pjadard_ts_data->jadard_diag_delay_wrok);
+        }
+        jd_g_buf_rd_enable = false;
+        //DataType = 0;
+        for (i = 2; i < len - 1; i++) {
+            uint8_t byte = buf_tmp[i];
+            if (byte >= '0' && byte <= '9') { /* 0~9 */
+                byte = byte - '0';
+            } else if (byte >= 'A' && byte <= 'F') { /* A~F */
+                byte = byte - 'A' + 10;
+            } else if (byte >= 'a' && byte <= 'f') { /* a~f */
+                byte = byte - 'a' + 10;
+            }
+            type = (type << 4) | (byte & 0xF);
+        }
+        DataType = (int)type;
+        JD_I("%s: DataType:%d\n", __func__, DataType);
+        if (DataType > 0) {
+            /* 1. Set mutual data type */
+            g_module_fp.fp_mutual_data_set((uint8_t)DataType);
+            /* 2. Start mutual data thread */
+            jadard_int_enable(false);
+            msleep(1000);
+            pjadard_ts_data->diag_thread_active = true;
+            jd_g_buf_rd_enable = true;
+
+            g_module_fp.fp_EnterBackDoor();
+            JD_I("Enter backdoor\n");
+
+            jd_diag_mutual_cnt = 0;
+            queue_delayed_work(pjadard_ts_data->jadard_diag_wq,
+                                &pjadard_ts_data->jadard_diag_delay_wrok, msecs_to_jiffies(1000));
+            JD_I("%s: Start get mutual data\n", __func__);
+            jadard_int_enable(true);
+        } else if (DataType == 0) {
+            g_module_fp.fp_mutual_data_set(JD_DATA_TYPE_RawData);
+        }
+    } else if ((buf_tmp[0] == 'b') && (buf_tmp[1] == ' ')) {
+        buf_rd_byte_num = buf_tmp[2] - '0';
+
+        if ((buf_rd_byte_num != 4) && (buf_rd_byte_num != 2)) {
+            JD_E("%s: Not support num = %d, set to 2\n", __func__, buf_rd_byte_num);
+            buf_rd_byte_num = 2;
+        }
+
+        JD_I("%s: buf_rd_byte_num = %d \n", __func__, buf_rd_byte_num);
+    }
+
+    return len;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static struct proc_ops jadard_proc_buf_rd_ops = {
+    .proc_open = jadard_buf_rd_proc_open,
+    .proc_read = seq_read,
+    .proc_release = seq_release,
+    .proc_write = jadard_buf_rd_write,
+};
+#else
+static struct file_operations jadard_proc_buf_rd_ops = {
+    .owner = THIS_MODULE,
+    .open = jadard_buf_rd_proc_open,
+    .read = seq_read,
+    .release = seq_release,
+    .write = jadard_buf_rd_write,
 };
 #endif
 
@@ -1876,6 +2049,12 @@ static ssize_t jadard_debug_read(struct file *file, char *buf,
                 } else {
                     ret += scnprintf(buf_tmp + ret, len - ret, "FW Upgrade Fail\n");
                 }
+            } else if (debug_cmd == 'm') {
+                if (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE) {
+                    ret += scnprintf(buf_tmp + ret, len - ret, "Direct read slave register\n");
+                } else {
+                    ret += scnprintf(buf_tmp + ret, len - ret, "Read slave by master\n");
+                }
             } else if (debug_cmd == 'd') {
                 if (jd_g_dbg_enable) {
                     ret += scnprintf(buf_tmp + ret, len - ret, "Debug Enable\n");
@@ -1944,6 +2123,14 @@ static ssize_t jadard_debug_write(struct file *file, const char *buf,
         JD_I("%s: Bin file name(%s)\n", __func__, fileName);
 #endif
 
+#ifdef JD_ESD_CHECK
+        if (pjadard_ts_data->esd_check_running == true) {
+            JD_I("Stop esd check\n");
+            pjadard_ts_data->esd_check_running = false;
+            cancel_delayed_work_sync(&pjadard_ts_data->work_esd_check);
+        }
+#endif
+
 #ifdef JD_ZERO_FLASH
         JD_I("Running Zero flash upgrade\n");
 
@@ -1994,12 +2181,42 @@ static ssize_t jadard_debug_write(struct file *file, const char *buf,
 #endif
         g_module_fp.fp_read_fw_ver();
         jadard_int_enable(true);
+
+#ifdef JD_ESD_CHECK
+        if (pjadard_ts_data->esd_check_running == false) {
+            JD_I("Start esd check\n");
+            pjadard_ts_data->esd_check_running = true;
+            queue_delayed_work(pjadard_ts_data->jadard_esd_check_wq, &pjadard_ts_data->work_esd_check, 0);
+        }
+#endif
     } else if ((buf_tmp[0] == 'e') && (buf_tmp[1] == 'r') && (buf_tmp[2] == 'a') &&
                 (buf_tmp[3] == 's') && (buf_tmp[4] == 'e')) {
+#ifdef JD_ESD_CHECK
+        if (pjadard_ts_data->esd_check_running == true) {
+            JD_I("Stop esd check\n");
+            pjadard_ts_data->esd_check_running = false;
+            cancel_delayed_work_sync(&pjadard_ts_data->work_esd_check);
+        }
+#endif
+
         if (g_module_fp.fp_flash_erase() < 0) {
             JD_E("%s: Flash erase fail\n", __func__);
         } else {
             JD_I("%s: Flash erase finish\n", __func__);
+        }
+    } else if (buf_tmp[0] == 'm') {
+        debug_cmd = buf_tmp[0];
+        if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
+            pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE = !(pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE);
+
+            if (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE) {
+                JD_I("Direct read slave register\n");
+            } else {
+                JD_I("Read slave by master\n");
+            }
+        } else {
+            pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE = true;
+            JD_I("Direct read slave register\n");
         }
     } else if (buf_tmp[0] == 'd') {
         debug_cmd = buf_tmp[0];
@@ -2131,8 +2348,15 @@ int jadard_touch_proc_init(void)
         goto fail_D;
     }
 
+    jadard_proc_buf_rd_file = proc_create(JADARD_PROC_BUF_RD_FILE, (S_IWUGO | S_IRUGO),
+                                       pjadard_touch_proc_dir, &jadard_proc_buf_rd_ops);
+    if (jadard_proc_buf_rd_file == NULL) {
+        JD_E(" %s: proc diag apk file create failed!\n", __func__);
+        goto fail_E;
+    }
     return 0;
 
+fail_E: remove_proc_entry(JADARD_PROC_DIAG_APK_FILE, pjadard_touch_proc_dir);
 fail_D: remove_proc_entry(JADARD_PROC_DEBUG_FILE, pjadard_touch_proc_dir);
 fail_C:
     if ( g_common_variable.dbi_dd_reg_mode == JD_DDREG_MODE_1 ) {
@@ -2159,6 +2383,7 @@ static void jadard_debug_data_init(void)
     jd_diag_mutual_fn = NULL;
     jd_diag_mutual = NULL;
     jd_diag_mutual_cnt = 0;
+    jd_buf = NULL;
     diag_arr_num = 0;
     reg_read_len = 1;
     dd_reg_read_len = 1;
@@ -2166,6 +2391,8 @@ static void jadard_debug_data_init(void)
     debug_cmd = 'v';
     fw_upgrade_complete = false;
     jd_g_dbg_enable = false;
+    jd_g_buf_rd_enable = false;
+    buf_rd_byte_num = 2;
 
     pjadard_debug->fp_touch_dbg_func = jadard_touch_dbg_func;
     pjadard_debug->fw_dump_going = &fw_dump_going;
@@ -2230,11 +2457,19 @@ int jadard_debug_init(void)
         err = -ENOMEM;
         goto err_alloc_memory_failed;
     }
-
+    jd_buf = kzalloc(pjadard_ic_data->JD_X_NUM * pjadard_ic_data->JD_Y_NUM * 
+                    buf_rd_byte_num * sizeof(uint8_t), GFP_KERNEL);
+    if (jd_buf == NULL) {
+        JD_E("%s: Rawdata buffer allocate failed\n", __func__);
+        err = -ENOMEM;
+        goto err_alloc_jd_buf_failed;
+    }
     jadard_touch_proc_init();
 
     return 0;
 
+err_alloc_jd_buf_failed:
+    kfree(jd_diag_mutual);
 err_alloc_memory_failed:
     cancel_delayed_work_sync(&ts->jadard_diag_delay_wrok);
     destroy_workqueue(ts->jadard_diag_wq);
@@ -2251,6 +2486,7 @@ err_alloc_debug_data_failed:
 
 void jadard_touch_proc_deinit(void)
 {
+    remove_proc_entry(JADARD_PROC_BUF_RD_FILE, pjadard_touch_proc_dir);
     remove_proc_entry(JADARD_PROC_DIAG_APK_FILE, pjadard_touch_proc_dir);
     remove_proc_entry(JADARD_PROC_DEBUG_FILE, pjadard_touch_proc_dir);
     if ( g_common_variable.dbi_dd_reg_mode == JD_DDREG_MODE_1 ) {
@@ -2273,6 +2509,8 @@ int jadard_debug_remove(void)
     struct jadard_ts_data *ts = pjadard_ts_data;
 
     jadard_touch_proc_deinit();
+    kfree(jd_buf);
+    kfree(jd_diag_mutual);
     cancel_delayed_work_sync(&ts->jadard_diag_delay_wrok);
     destroy_workqueue(ts->jadard_diag_wq);
     destroy_workqueue(ts->fw_dump_wq);

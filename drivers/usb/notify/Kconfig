@@ -170,3 +170,20 @@ config USB_NOTIFY_GKI_FEATURE
 	 It is enabled on gki kernel image.
 	 SEP kernel does not use it.
 	 It is made by samsung.
+	 
+config DISABLE_LOCKSCREEN_USB_RESTRICTION
+	bool "disable usb restriction during lockscreen"
+	help
+	 Restricting the usb function on the lock screen is a concept applied for usb security
+	 it has been applied since v os (oneui 7.0) or higher
+	 This feature is to avoid applying the concept.
+	 Enable this feature to enable usb communication on the lock screen.
+
+config USB_NOTIFY_JDM
+	bool "use apply config specifically for JDM models"
+	depends on USB_NOTIFY_LAYER
+	default y
+	help
+     This is a feature to apply special configurations of JDM models.
+	 You can use it to apply the source code needed for JDM models.
+	 It is made by SRV USB driver.

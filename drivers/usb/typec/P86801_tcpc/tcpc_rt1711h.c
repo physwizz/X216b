@@ -78,6 +78,8 @@ struct rt1711_chip {
 	struct kthread_worker irq_worker;
 	struct kthread_work irq_work;
 	struct task_struct *irq_worker_task;
+	struct mutex irq_lock;
+	bool is_suspended;
 	int irq_gpio;
 	int irq;
 	int chip_id;
@@ -721,6 +723,97 @@ static int rt1711_init_alert(struct tcpc_device *tcpc)
 			chip->irq, chip->irq_gpio, ret);
 		return ret;
 	}
+	device_init_wakeup(chip->dev, true);
+
+	enable_irq_wake(chip->irq);
+
+	return 0;
+}
+
+static irqreturn_t cps8851_intr_handler(int irq, void *data)
+{
+	struct rt1711_chip *chip = data;;
+
+	pm_wakeup_event(chip->dev, RT1711H_IRQ_WAKE_TIME);
+
+	mutex_lock(&chip->irq_lock);
+	if (chip->is_suspended) {
+		mutex_unlock(&chip->irq_lock);
+		return IRQ_HANDLED;
+	}
+	mutex_unlock(&chip->irq_lock);
+
+/*+ P86801AA1-13544, gudi1@wt, add 20231017, usb if*/
+#ifdef CONFIG_USB_PD_CHECK_RX_PENDING_IF_SRTOUT
+	reinit_completion(&chip->tcpc->alert_done);
+#endif /* CONFIG_USB_PD_CHECK_RX_PENDING_IF_SRTOUT */
+/*- P86801AA1-13544, gudi1@wt, add 20231017, usb if*/
+
+	tcpci_lock_typec(chip->tcpc);
+	tcpci_alert(chip->tcpc);
+	tcpci_unlock_typec(chip->tcpc);
+
+#ifdef CONFIG_USB_PD_CHECK_RX_PENDING_IF_SRTOUT
+	if (!completion_done(&chip->tcpc->alert_done)) {
+		chip->tcpc->is_rx_event = false;
+		complete(&chip->tcpc->alert_done);
+	}
+#endif /* CONFIG_USB_PD_CHECK_RX_PENDING_IF_SRTOUT */
+/*- P86801AA1-13544, gudi1@wt, add 20231017, usb if*/
+
+	return IRQ_HANDLED;
+}
+
+static int cps8851_init_alert(struct tcpc_device *tcpc)
+{
+	struct rt1711_chip *chip = tcpc_get_dev_data(tcpc);
+	int ret = 0;
+	char *name = NULL;
+
+	/* Clear Alert Mask & Status */
+	rt1711_write_word(chip->client, TCPC_V10_REG_ALERT_MASK, 0);
+	rt1711_write_word(chip->client, TCPC_V10_REG_ALERT, 0xffff);
+
+	name = devm_kasprintf(chip->dev, GFP_KERNEL, "%s-IRQ",
+			      chip->tcpc_desc->name);
+	if (!name)
+		return -ENOMEM;
+
+	dev_info(chip->dev, "%s name = %s, gpio = %d\n",
+			    __func__, chip->tcpc_desc->name, chip->irq_gpio);
+
+	ret = devm_gpio_request(chip->dev, chip->irq_gpio, name);
+	if (ret < 0) {
+		dev_notice(chip->dev, "%s request GPIO fail(%d)\n",
+				      __func__, ret);
+		return ret;
+	}
+
+	ret = gpio_direction_input(chip->irq_gpio);
+	if (ret < 0) {
+		dev_notice(chip->dev, "%s set GPIO fail(%d)\n", __func__, ret);
+		return ret;
+	}
+
+	chip->irq = gpio_to_irq(chip->irq_gpio);
+	if (chip->irq < 0) {
+		dev_notice(chip->dev, "%s gpio to irq fail(%d)",
+				      __func__, ret);
+		return ret;
+	}
+
+	dev_info(chip->dev, "%s IRQ number = %d\n", __func__, chip->irq);
+
+	ret = devm_request_threaded_irq(chip->dev, chip->irq, NULL,
+                                    cps8851_intr_handler,
+                                    IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+                                    name, chip);
+	if (ret < 0) {
+	    dev_notice(chip->dev, "%s request irq fail(%d)\n",
+	               __func__, ret);
+	    return ret;
+	}
+
 	device_init_wakeup(chip->dev, true);
 
 	enable_irq_wake(chip->irq);
@@ -1861,7 +1954,12 @@ static int rt1711_i2c_probe(struct i2c_client *client,
 	}
 	chip->dev = &client->dev;
 	chip->client = client;
-	sema_init(&chip->suspend_lock, 1);
+	if (chip_is_rt1711(chip)) {
+		mutex_init(&chip->irq_lock);
+		chip->is_suspended = false;
+	} else {
+		sema_init(&chip->suspend_lock, 1);
+	}
 	i2c_set_clientdata(client, chip);
 
 #if IS_ENABLED(CONFIG_TCPC_RT1711H)
@@ -1886,7 +1984,10 @@ static int rt1711_i2c_probe(struct i2c_client *client,
 		goto err_tcpc_reg;
 	}
 
-	ret = rt1711_init_alert(chip->tcpc);
+	if (chip_is_rt1711(chip))
+		ret = cps8851_init_alert(chip->tcpc);
+	else
+		ret = rt1711_init_alert(chip->tcpc);
 	if (ret < 0) {
 		pr_err("rt1711 init alert fail\n");
 		goto err_irq_init;
@@ -1909,6 +2010,8 @@ err_irq_init:
 err_tcpc_reg:
 	rt1711_regmap_deinit(chip);
 err_regmap_init:
+	if (chip_is_rt1711(chip))
+		mutex_destroy(&chip->irq_lock);
 	return ret;
 }
 
@@ -1943,8 +2046,15 @@ static int rt1711_i2c_suspend(struct device *dev)
 
 	if (client) {
 		chip = i2c_get_clientdata(client);
-		if (chip)
-			down(&chip->suspend_lock);
+		if (chip) {
+			if (chip_is_rt1711(chip)) {
+				mutex_lock(&chip->irq_lock);
+				chip->is_suspended = true;
+				mutex_unlock(&chip->irq_lock);
+			} else {
+				down(&chip->suspend_lock);
+			}
+		}
 	}
 
 	return 0;
@@ -1957,8 +2067,15 @@ static int rt1711_i2c_resume(struct device *dev)
 
 	if (client) {
 		chip = i2c_get_clientdata(client);
-		if (chip)
-			up(&chip->suspend_lock);
+		if (chip) {
+			if (chip_is_rt1711(chip)) {
+				mutex_lock(&chip->irq_lock);
+				chip->is_suspended = false;
+				mutex_unlock(&chip->irq_lock);
+			} else {
+				up(&chip->suspend_lock);
+			}
+		}
 	}
 
 	return 0;

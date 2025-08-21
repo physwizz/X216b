@@ -2,6 +2,9 @@
 #include "jadard_common.h"
 #include "jadard_module.h"
 #include "jadard_ic_JD9366TP.h"
+#include <linux/hardware_info.h>
+extern char TP_name[HARDWARE_MAX_ITEM_LONGTH];
+extern char Lcm_name_tp[255];
 
 extern struct jadard_module_fp g_module_fp;
 extern struct jadard_ts_data *pjadard_ts_data;
@@ -246,7 +249,7 @@ static int jd9366tp_ReadRegSingle(uint32_t addr, uint8_t *rdata)
 
     if (g_jd9366tp_chip_info.back_door_mode) {
     #ifdef JD_READ_SLAVE_BY_MASTER
-        if (((pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) &&
+        if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
             (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
             ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
             ReCode = jd9366tp_read_slave_by_master(addr, rdata , 1);
@@ -259,8 +262,9 @@ static int jd9366tp_ReadRegSingle(uint32_t addr, uint8_t *rdata)
     } else {
         if ((pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) {
         #ifdef JD_READ_SLAVE_BY_MASTER
-            if (((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET) &&
-                (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false)) {
+            if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
+                (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
+                ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
                 ReCode = jd9366tp_read_slave_by_master(addr, rdata, 1);
             } else {
                 ReCode = jd9366tp_Read_FW_RegSingleSpi(addr, rdata);
@@ -269,7 +273,17 @@ static int jd9366tp_ReadRegSingle(uint32_t addr, uint8_t *rdata)
             ReCode = jd9366tp_Read_FW_RegSingleSpi(addr, rdata);
         #endif
         } else {
+        #ifdef JD_READ_SLAVE_BY_MASTER
+            if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
+                (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
+                ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
+                ReCode = jd9366tp_read_slave_by_master(addr, rdata, 1);
+            } else {
+                ReCode = jd9366tp_Read_FW_RegSingleI2c(addr, rdata);
+            }
+        #else
             ReCode = jd9366tp_Read_FW_RegSingleI2c(addr, rdata);
+        #endif
         }
     }
 
@@ -310,7 +324,7 @@ static int jd9366tp_ReadRegMulti(uint32_t addr, uint8_t *rdata, uint16_t rlen)
     if ((addr >= JD9366TP_MEMORY_ADDR_ERAM) &&
         (addr < (JD9366TP_MEMORY_ADDR_ERAM + JD9366TP_MEMORY_ERAM_SIZE))) {
     #ifdef JD_READ_SLAVE_BY_MASTER
-        if (((pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) &&
+        if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
             (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
             ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
             ReCode = jd9366tp_read_slave_by_master(addr, rdata, rlen);
@@ -327,7 +341,7 @@ static int jd9366tp_ReadRegMulti(uint32_t addr, uint8_t *rdata, uint16_t rlen)
 
         if (g_jd9366tp_chip_info.back_door_mode) {
         #ifdef JD_READ_SLAVE_BY_MASTER
-            if (((pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) &&
+            if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
                 (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
                 ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
                 ReCode = jd9366tp_read_slave_by_master(addr, rdata, rlen);
@@ -340,8 +354,9 @@ static int jd9366tp_ReadRegMulti(uint32_t addr, uint8_t *rdata, uint16_t rlen)
         } else {
             if ((pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) {
             #ifdef JD_READ_SLAVE_BY_MASTER
-                if (((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET) &&
-                    (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false)) {
+                if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
+                    (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
+                    ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
                     ReCode = jd9366tp_read_slave_by_master(addr, rdata, rlen);
                 } else {
                     ReCode = jd9366tp_Read_FW_RegMultiSpi(addr, rdata, rlen);
@@ -350,7 +365,17 @@ static int jd9366tp_ReadRegMulti(uint32_t addr, uint8_t *rdata, uint16_t rlen)
                 ReCode = jd9366tp_Read_FW_RegMultiSpi(addr, rdata, rlen);
             #endif
             } else {
+            #ifdef JD_READ_SLAVE_BY_MASTER
+                if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
+                    (pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE == false) &&
+                    ((addr & JD9366TP_SLAVE_ADDR_OFFSET) == JD9366TP_SLAVE_ADDR_OFFSET)) {
+                    ReCode = jd9366tp_read_slave_by_master(addr, rdata, rlen);
+                } else {
+                    ReCode = jd9366tp_Read_FW_RegMultiI2c(addr, rdata, rlen);
+                }
+            #else
                 ReCode = jd9366tp_Read_FW_RegMultiI2c(addr, rdata, rlen);
+            #endif
             }
         }
 
@@ -586,9 +611,9 @@ static void jd9366tp_PinReset(void)
         jadard_gpio_set_value(pjadard_ts_data->rst_gpio, 1);
         mdelay(10);
         jadard_gpio_set_value(pjadard_ts_data->rst_gpio, 0);
-        mdelay(10);
+        mdelay(5);
         jadard_gpio_set_value(pjadard_ts_data->rst_gpio, 1);
-        mdelay(100);
+        mdelay(10);
 
         gpio_free(pjadard_ts_data->rst_gpio);
     } else {
@@ -703,6 +728,8 @@ static int jd9366tp_PorInit(uint32_t offset)
 
     if (ReCode < 0) {
         JD_E("%s: Por init fail\n", __func__);
+    } else {
+        JD_I("%s: Por init\n", __func__);
     }
 
     return ReCode;
@@ -1337,6 +1364,9 @@ static int jd9366tp_ReadSectionInfo(bool reinit_config)
         g_jd9366tp_chip_info.esram_info_content_addr.slave_data_addr =
             esram_info_content[JD9366TP_ESRAM_DDREG_DATA_BUF].info_content_addr;
 #endif
+        /* Read TCB bus speed */
+        jd9366tp_GetTCBSpeed(JD9366TP_MASTER_ADDR_OFFSET, &g_jd9366tp_chip_info.tcb_bus_speed);
+        JD_I("%s: Tcb bus speed: %d\n", __func__, g_jd9366tp_chip_info.tcb_bus_speed);
 
         /* 3.1 Set Coordinate addr. and length */
         g_jd9366tp_chip_info.esram_info_content_addr.coordinate_report =
@@ -1482,10 +1512,12 @@ static int jd9366tp_ReadSectionInfo(bool reinit_config)
                                                                          (rbuf[2] << 16) |
                                                                          (rbuf[1] << 8) |
                                                                          (rbuf[0]));
+                pjadard_ts_data->fw_ready = true;
                 JD_I("%s: Section info was ready\n", __func__);
             }
         }
     } else {
+        pjadard_ts_data->fw_ready = false;
         JD_E("%s: Section info was not ready\n", __func__);
         ReCode = JD_APP_START_FAIL;
     }
@@ -1707,7 +1739,7 @@ static void jd9366tp_ReArrangePageProgramInfo(uint32_t ori_addr, uint32_t ori_le
                 (ori_len + (ori_addr % JD9366TP_SIZE_DEF_PAGE_SIZE));
 }
 
-static int jd9366tp_SetDMAStart(uint32_t flash_addr, uint32_t dma_size, uint32_t target_addr, uint8_t dma_cmd)
+static int jd9366tp_SetDMAStart(uint32_t flash_addr, uint32_t dma_size, uint32_t target_addr, uint8_t dma_cmd, bool delay_en)
 {
     int ReCode;
     uint8_t wBuf[JD_SIX_SIZE + JD_SEVEN_SIZE];
@@ -1751,19 +1783,21 @@ static int jd9366tp_SetDMAStart(uint32_t flash_addr, uint32_t dma_size, uint32_t
         return ReCode;
     }
 
+    if (delay_en) {
     mdelay(50);
+    }
 
     if (dma_cmd == (uint8_t)JD9366TP_DMA_RELATED_SETTING_PAGE_PROGRAM_FLASH) {
         /* Pulling DMA Page Program = JD9366TP_DMA_RELATED_SETTING_PAGE_PROGRAM_DONE */
         mdelay(1);
-        ReCode = jd9366tp_GetPageProgramStatus(100);
+        ReCode = jd9366tp_GetPageProgramStatus(200);
         if (ReCode < 0) {
             JD_E("%s: Get DMA page program status fail\n", __func__);
             return ReCode;
         }
     } else {
         /* Pulling DMA busy = JD9366TP_DMA_RELATED_SETTING_DMA_DONE */
-        ReCode = jd9366tp_GetDMAStatus(50);
+        ReCode = jd9366tp_GetDMAStatus(100);
         if (ReCode < 0) {
             JD_E("%s: Get DMA status fail\n", __func__);
             return ReCode;
@@ -1930,7 +1964,7 @@ static int jd9366tp_ReadFlash(uint32_t addr, uint8_t *rdata, uint32_t rlen)
         JD_D("%s: Flash DMA start\n", __func__);
 
         ReCode = jd9366tp_SetDMAStart(flashaddr, ramlen, targetaddr,
-                                        (uint8_t)JD9366TP_DMA_RELATED_SETTING_READ_FROM_FLASH);
+                                        (uint8_t)JD9366TP_DMA_RELATED_SETTING_READ_FROM_FLASH, true);
         if (ReCode < 0) {
             JD_E("%s: DMA start error\n", __func__);
             kfree(rBuf);
@@ -2060,7 +2094,7 @@ static int jd9366tp_PageProgramFlash(uint32_t addr, uint32_t wlen, uint8_t *data
 
         /* Set DMA Start & Pulling DMA busy = JD9366TP_DMA_RELATED_SETTING_DMA_DONE */
         ReCode = jd9366tp_SetDMAStart(flashaddr, dmasize, targetaddr,
-                                        (uint8_t)JD9366TP_DMA_RELATED_SETTING_PAGE_PROGRAM_FLASH);
+                                       (uint8_t)JD9366TP_DMA_RELATED_SETTING_PAGE_PROGRAM_FLASH, true);
         if (ReCode < 0) {
             JD_E("%s: DMA start error\n", __func__);
             kfree(wBuf);
@@ -2170,21 +2204,6 @@ static int jd9366tp_HostReadFlash(uint32_t ReadAddr, uint8_t *pDataBuffer, uint3
     if (ReCode < 0) {
          JD_E("%s: TCB spi 16M fail\n", __func__);
         return ReCode;
-    }
-
-    /* 4.4 read slave IC id */
-    if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
-        ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-        if (ReCode < 0) { /* Retry */
-            msleep(10);
-            ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-            if (ReCode < 0) {
-                JD_E("%s: Check slave ICID fail\n", __func__);
-                return ReCode;
-            }
-        }
     }
 
     /* 5. Set Flash SPI speed & 6. Read Flash id */
@@ -2320,21 +2339,6 @@ static int jd9366tp_HostWriteFlash(uint32_t WriteAddr, uint8_t *pFileData, uint3
         if (ReCode < 0) {
              JD_E("%s: TCB spi 16M fail\n", __func__);
             return ReCode;
-        }
-
-        /* 4.4 read slave IC id */
-        if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
-            ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-            if (ReCode < 0) { /* Retry */
-                msleep(10);
-                ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-                if (ReCode < 0) {
-                    JD_E("%s: Check slave ICID fail\n", __func__);
-                    return ReCode;
-                }
-            }
         }
 
         /* 5. Abort Host DMA (inital DMA) */
@@ -2492,6 +2496,7 @@ static int jd9366tp_HostWriteFlash(uint32_t WriteAddr, uint8_t *pFileData, uint3
         retry++;
 
         /* 14. Reset IC touch soc */
+        jd9366tp_PorInit(AddrOffset);
         ReCode = jd9366tp_ResetSOC(AddrOffset);
         if (ReCode < 0) {
             JD_E("%s: Reset touch soc fail\n", __func__);
@@ -2640,7 +2645,7 @@ static int jd9366tp_WritePram(uint32_t addr, uint8_t *pData, uint32_t len)
     }
 
     /* Set DMA Start & Pulling DMA busy = JD9366TP_DMA_RELATED_SETTING_DMA_DONE */
-    ReCode = jd9366tp_SetDMAStart(addr, len, addr, (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+    ReCode = jd9366tp_SetDMAStart(addr, len, addr, (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
     if (ReCode < 0) {
         JD_E("%s: DMA start error\n", __func__);
         return ReCode;
@@ -2653,7 +2658,7 @@ static int jd9366tp_WritePram(uint32_t addr, uint8_t *pData, uint32_t len)
 
 static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32_t FileSize)
 {
-    int ReCode, i;
+    int ReCode, i = 0;
     uint32_t AddrOffset;
     uint16_t romid = 0;
     uint16_t crc, softcrc;
@@ -2661,6 +2666,7 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
     uint8_t MoveInfoPsramIndex = 0;
     struct JD9366TP_MOVE_INFO *MoveInfo = NULL;
     bool pram_fail = false;
+    int retry = 0;
 
 #ifdef JD_SET_VDDD
     /* 0. Set VDDD to 1.42v */
@@ -2668,7 +2674,14 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
 #endif
 
     /* 1. Enter backdoor & 2. Read IC ID */
+    do {
     ReCode = jd9366tp_EnterBackDoor(&romid);
+
+        if (ReCode < 0) {
+            msleep(100);
+        }
+    } while ((++i < 3) && (ReCode < 0));
+
     if (ReCode < 0)
         return ReCode;
 
@@ -2728,21 +2741,6 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
         return ReCode;
     }
 
-    /* 5.2 read slave IC id */
-    // if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
-        // ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-        // if (ReCode < 0) { /* Retry */
-            // msleep(10);
-            // ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-            // if (ReCode < 0) {
-                // JD_E("%s: Check slave ICID fail\n", __func__);
-                // return ReCode;
-            // }
-        // }
-    // }
-
     /* 5.1 enable TCB write PRAM */
     ReCode = jd9366tp_EnableTCBwritePRAM(AddrOffset);
     if (ReCode < 0) {
@@ -2785,9 +2783,10 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
             ReCode = jd9366tp_SetDMAStart((MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF) | 0x01000000,
                                            MoveInfo[MoveInfoPsramIndex].fl_len,
                                           (MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF) | 0x01000000,
-                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
             if (ReCode < 0) {
                 JD_E("%s: [Check slave ram]DMA start error\n", __func__);
+                goto GOTO_UPGRADE_FW;
                 kfree(MoveInfo);
                 return ReCode;
             } else {
@@ -2833,9 +2832,10 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
             ReCode = jd9366tp_SetDMAStart(MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF,
                                           MoveInfo[MoveInfoPsramIndex].fl_len,
                                           MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF,
-                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
             if (ReCode < 0) {
                 JD_E("%s: [Check master ram]DMA start error\n", __func__);
+                goto GOTO_UPGRADE_FW;
                 kfree(MoveInfo);
                 return ReCode;
             } else {
@@ -2861,6 +2861,7 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
     }
     /* END: Check need upgrade fw */
 
+GOTO_UPGRADE_FW:
     /* 7. Write data to PRAM/DRAM */
     JD_I("%s: Write ram start\n", __func__);
 
@@ -2911,17 +2912,22 @@ static int jd9366tp_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32
         }
     }
 
+    /* 8-5. Clear PorInit */
+    jd9366tp_PorInit(AddrOffset);
+
 SKIP_UPGRADE_FW:
     kfree(MoveInfo);
     JD_I("%s: Write ram finish\n", __func__);
 
-    /* 9. Software reset MCU */
-    ReCode = jd9366tp_ResetMCU(AddrOffset);
+SOC_RESET_RETRY:
+    /* 9. Software reset SOC */
+    ReCode = jd9366tp_ResetSOC(AddrOffset);
     if (ReCode < 0) {
         return ReCode;
     } else {
-        JD_I("%s: Reset touch mcu\n", __func__);
+        JD_I("%s: Reset touch soc\n", __func__);
     }
+    mdelay(1);
 
     /* 10. start MCU */
     ReCode = jd9366tp_StartMCU(AddrOffset);
@@ -2941,6 +2947,14 @@ SKIP_UPGRADE_FW:
 
     /* 12. Reload section info. */
     ReCode = jd9366tp_ReadSectionInfo(false);
+    if (ReCode < 0) {
+        if (retry++ < 3) {
+            JD_I("%s: Recovery touch mcu\n", __func__);
+            goto SOC_RESET_RETRY;
+        } else {
+            JD_E("%s: Touch was not ready\n", __func__);
+        }
+    }
 
     return ReCode;
 }
@@ -2948,7 +2962,7 @@ SKIP_UPGRADE_FW:
 #ifdef JD_ESD_CHECK
 static int jd9366tp_esd_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, uint32_t FileSize)
 {
-    int ReCode, i;
+    int ReCode, i = 0;
     uint32_t AddrOffset;
     uint16_t romid = 0;
     uint16_t crc, softcrc;
@@ -2956,6 +2970,7 @@ static int jd9366tp_esd_HostWritePram(uint32_t WriteAddr, uint8_t *pFileData, ui
     uint8_t MoveInfoPsramIndex = 0;
     struct JD9366TP_MOVE_INFO *MoveInfo = NULL;
     bool pram_fail = false;
+    int retry = 0;
 
     AddrOffset = (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE)
                   ? JD9366TP_BOTH_ADDR_OFFSET : JD9366TP_MASTER_ADDR_OFFSET;
@@ -2998,7 +3013,7 @@ JD_SLAVE_PRAM_CRC_RECHECK:
             ReCode = jd9366tp_SetDMAStart((MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF) | 0x01000000,
                                            MoveInfo[MoveInfoPsramIndex].fl_len,
                                           (MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF) | 0x01000000,
-                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
             if (ReCode < 0) {
                 JD_E("%s: [Check slave ram]DMA start error\n", __func__);
                 kfree(MoveInfo);
@@ -3026,7 +3041,7 @@ JD_SLAVE_PRAM_CRC_RECHECK:
                     } else {
                         pjadard_report_data->crc_retry++;
                         JD_I("%s: Recheck slave CRC\n", __func__);
-                        mdelay(500);
+                        msleep(500);
                         goto JD_SLAVE_PRAM_CRC_RECHECK;
                     }
                 }
@@ -3061,7 +3076,7 @@ JD_MASTER_PRAM_CRC_RECHECK:
             ReCode = jd9366tp_SetDMAStart(MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF,
                                           MoveInfo[MoveInfoPsramIndex].fl_len,
                                           MoveInfo[MoveInfoPsramIndex].to_mem_st_addr & 0xF0FFFFFF,
-                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+                                          (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
             if (ReCode < 0) {
                 JD_E("%s: [Check master ram]DMA start error\n", __func__);
                 kfree(MoveInfo);
@@ -3089,7 +3104,7 @@ JD_MASTER_PRAM_CRC_RECHECK:
                     } else {
                         pjadard_report_data->crc_retry++;
                         JD_I("%s: Recheck master CRC\n", __func__);
-                        mdelay(500);
+                        msleep(500);
                         goto JD_MASTER_PRAM_CRC_RECHECK;
                     }
                 }
@@ -3112,7 +3127,14 @@ JD_MASTER_PRAM_CRC_RECHECK:
     
     pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE = true;
     /* 1. Enter backdoor & 2. Read IC ID */
+    do {
     ReCode = jd9366tp_EnterBackDoor(&romid);
+
+        if (ReCode < 0) {
+            msleep(100);
+        }
+    } while ((++i < 3) && (ReCode < 0));
+
     if (ReCode < 0) {
         kfree(MoveInfo);
         return ReCode;
@@ -3187,22 +3209,6 @@ JD_MASTER_PRAM_CRC_RECHECK:
         return ReCode;
     }
 
-    /* 5.2 read slave IC id */
-    // if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
-        // ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-        // if (ReCode < 0) { /* Retry */
-            // msleep(10);
-            // ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-            // if (ReCode < 0) {
-                // JD_E("%s: Check slave ICID fail\n", __func__);
-                // kfree(MoveInfo);
-                // return ReCode;
-            // }
-        // }
-    // }
-
     /* 5.1 enable TCB write PRAM */
     ReCode = jd9366tp_EnableTCBwritePRAM(AddrOffset);
     if (ReCode < 0) {
@@ -3263,13 +3269,15 @@ JD_MASTER_PRAM_CRC_RECHECK:
     kfree(MoveInfo);
     JD_I("%s: Write ram finish\n", __func__);
 
-    /* 9. Software reset MCU */
-    ReCode = jd9366tp_ResetMCU(AddrOffset);
+SOC_RESET_RETRY:
+    /* 9. Software reset SOC */
+    ReCode = jd9366tp_ResetSOC(AddrOffset);
     if (ReCode < 0) {
         return ReCode;
     } else {
-        JD_I("%s: Reset touch mcu\n", __func__);
+        JD_I("%s: Reset touch soc\n", __func__);
     }
+    mdelay(1);
 
     /* 10. start MCU */
     ReCode = jd9366tp_StartMCU(AddrOffset);
@@ -3289,6 +3297,14 @@ JD_MASTER_PRAM_CRC_RECHECK:
 
     /* 12. Reload section info. */
     ReCode = jd9366tp_ReadSectionInfo(false);
+    if (ReCode < 0) {
+        if (retry++ < 3) {
+            JD_I("%s: Recovery touch mcu\n", __func__);
+            goto SOC_RESET_RETRY;
+        } else {
+            JD_E("%s: Touch was not ready\n", __func__);
+        }
+    }
 
     return ReCode;
 }
@@ -3359,7 +3375,7 @@ static int jd9366tp_ReadPram(uint32_t addr, uint8_t *pData, uint32_t len)
     }
 
     /* Set DMA Start & Pulling DMA busy = JD9366TP_DMA_RELATED_SETTING_DMA_DONE */
-    ReCode = jd9366tp_SetDMAStart(addr, len, addr, (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM);
+    ReCode = jd9366tp_SetDMAStart(addr, len, addr, (uint8_t)JD9366TP_DMA_RELATED_SETTING_WRITE_TO_PRAM, false);
     if (ReCode < 0) {
         JD_E("%s: DMA start error\n", __func__);
         kfree(rBuf);
@@ -3426,21 +3442,6 @@ static int jd9366tp_HostReadPram(uint32_t ReadAddr, uint8_t *pFileData, uint32_t
     if (ReCode < 0) {
          JD_E("%s: TCB spi 16M fail\n", __func__);
         return ReCode;
-    }
-
-    /* 4.4 read slave IC id */
-    if (pjadard_ic_data->JD_MODULE_CASCADE_MODE == JD_CASCADE_MODE_ENABLE) {
-        ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-        if (ReCode < 0) { /* Retry */
-            msleep(10);
-            ReCode = jd9366tp_GetID(&romid, JD9366TP_SLAVE_ADDR_OFFSET);
-
-            if (ReCode < 0) {
-                JD_E("%s: Check slave ICID fail\n", __func__);
-                return ReCode;
-            }
-        }
     }
 
     /* 5. Read data from PRAM/DRAM */
@@ -3590,26 +3591,29 @@ static void module_jd9366tp_PorInit(void)
 
 static int module_jd9366tp_register_read(uint32_t ReadAddr, uint8_t *ReadData, uint32_t ReadLen)
 {
-#ifdef JD_READ_SLAVE_BY_MASTER
     int i;
-#endif
     int ReCode;
 
     if (ReadLen & 0xFFFF0000) {
         ReCode = JD_READ_LEN_OVERFLOW;
     } else {
-#ifdef JD_READ_SLAVE_BY_MASTER
-        if (((ReadAddr & 0x51000000) == 0x51000000) || ((ReadAddr & 0x51800000) == 0x51800000)) {
-            for (i = 0; i < ReadLen; i++) {
-                ReCode = jd9366tp_ReadRegSingle(ReadAddr + i, ReadData + i);
+        if (((ReadAddr & JD_S_DBI_DDREG_BASE_ADDR) == JD_S_DBI_DDREG_BASE_ADDR) ||
+            ((ReadAddr & JD_S_DBI_DDREG_STD_CMD_BASE_ADDR) == JD_S_DBI_DDREG_STD_CMD_BASE_ADDR)) {
+            if ((g_jd9366tp_chip_info.tcb_bus_speed > 0) &&
+                (pjadard_ts_data != NULL) && (pjadard_ts_data->spi != NULL)) {
+                JD_I("%s: Read slave DD register one by one\n", __func__);
+                for (i = 0; i < ReadLen; i++) {
+                    ReCode = jd9366tp_ReadRegSingle(ReadAddr + i, ReadData + i);
+                }
+            } else {
+                JD_I("%s: Read slave DD register\n", __func__);
+                pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE = true;
+                ReCode = jd9366tp_ReadRegMulti(ReadAddr, ReadData, (uint16_t)ReadLen);
+                pjadard_ic_data->JD_DISABLE_MASTER_TO_SLAVE = false;
             }
         } else {
             ReCode = jd9366tp_ReadRegMulti(ReadAddr, ReadData, (uint16_t)ReadLen);
         }
-#else
-        ReCode = jd9366tp_ReadRegMulti(ReadAddr, ReadData, (uint16_t)ReadLen);
-#endif
-
     }
 
     return ReCode;
@@ -3617,7 +3621,18 @@ static int module_jd9366tp_register_read(uint32_t ReadAddr, uint8_t *ReadData, u
 
 static int module_jd9366tp_register_write(uint32_t WriteAddr, uint8_t *WriteData, uint32_t WriteLen)
 {
-    return jd9366tp_WriteRegMulti(WriteAddr, WriteData, (uint16_t)WriteLen);
+    int i, ReCode;
+
+    if (((WriteAddr & JD_DBI_DDREG_BASE_ADDR) == JD_DBI_DDREG_BASE_ADDR) ||
+        ((WriteAddr & JD_DBI_DDREG_STD_CMD_BASE_ADDR) == JD_DBI_DDREG_STD_CMD_BASE_ADDR)) {
+        for (i = 0; i < WriteLen; i++) {
+            ReCode = jd9366tp_WriteRegSingle(WriteAddr + i, *(WriteData + i));
+        }
+    } else {
+        ReCode = jd9366tp_WriteRegMulti(WriteAddr, WriteData, (uint16_t)WriteLen);
+    }
+
+    return ReCode;
 }
 
 static int module_jd9366tp_ram_read(uint32_t ReadAddr, uint8_t *ReadBuffer, uint32_t ReadLen)
@@ -3730,6 +3745,10 @@ static void module_jd9366tp_read_fw_ver(void)
         scnprintf(pjadard_ic_data->panel_maker, sizeof(pjadard_ic_data->panel_maker), "%s", maker_name);
     }
 
+//	if (strstr(Lcm_name_tp,"xinxian_jd9366ts_wt_dsi_vdo_90hz_csot")) {
+         snprintf(TP_name,HARDWARE_MAX_ITEM_LONGTH,"XINXIAN,JD9366,FW:0x%04X",  \
+                pjadard_ic_data->fw_cid_ver);
+//	}
     JD_I("FW_VER: %08x\n", pjadard_ic_data->fw_ver);
     JD_I("FW_CID_VER: %08x\n", pjadard_ic_data->fw_cid_ver);
     JD_I("PANEL_MAKER: %s\n", pjadard_ic_data->panel_maker);
@@ -3774,8 +3793,7 @@ static void module_jd9366tp_mutual_data_set(uint8_t data_type)
         status[0] = 0x55;
         status[1] = 0xAA;
         jd9366tp_WriteRegMulti(g_jd9366tp_chip_info.dsram_host_addr.data_output_v2, status, sizeof(status));
-    }
-    else {
+    } else {
         status[0] = 0x00;
         status[1] = 0x00;
         jd9366tp_WriteRegMulti(g_jd9366tp_chip_info.dsram_host_addr.data_output_v2, status, sizeof(status));
@@ -3840,9 +3858,9 @@ static int module_jd9366tp_read_mutual_data(uint8_t *rdata, uint16_t rlen)
         ReCode = jd9366tp_ReadRegMulti(g_jd9366tp_chip_info.esram_info_content_addr.coordinate_report, rdata, rlen);
         if (ReCode >= 0)
             ReCode = JD_REPORT_DATA;
-    }
-    else
+    } else {
         ReCode = jd9366tp_ReadRegMulti(g_jd9366tp_chip_info.dsram_debug_addr.output_data_addr, rdata, rlen);
+    }
 
     return ReCode;
 }
@@ -3869,7 +3887,7 @@ static void module_jd9366tp_set_rotate_border(uint16_t rotate)
 static void module_jd9366tp_set_earphone_enable(uint8_t status)
 {
     uint8_t wdata[JD_TWO_SIZE] = {0x00, 0x00};
-
+    JD_I("module_jd9366tp_set_earphone_enable: status=%d\n",status );
     switch (status) {
         case 1: /* earphone removed */
             pjadard_ts_data->earphone_enable &=  0xFF00;
@@ -4090,6 +4108,7 @@ static void module_jd9366tp_SetMpBypassMain(void)
     wBuf[0] = 0xFF;
     wBuf[1] = 0xFF;
     module_jd9366tp_register_write(g_jd9366tp_chip_info.dsram_host_addr.mpap_bypass_main, wBuf, sizeof(wBuf));
+    msleep(100);
 }
 
 static void module_jd9366tp_ClearMpBypassMain(void)
@@ -4189,7 +4208,7 @@ static bool module_jd9366tp_chip_detect(void)
             ret = true;
         } else {
             JD_E("%s:Read driver ID %04X not equal %04X\n", __func__, romid, CHIP_ID);
-            msleep(500);
+            msleep(1000);
         }
     } while ((++i < 3) && (ret == false));
 
@@ -4282,6 +4301,16 @@ static int jadard_jd9366tp_probe(void)
     struct jadard_support_chip *ptr = NULL;
 
     JD_I("%s:Enter\n", __func__);
+
+    if (!Lcm_name_tp[0]) {
+        JD_I("Lcm_name_tp is missing.", __func__);
+        return -1;
+    }
+
+    if (strcmp(Lcm_name_tp,"xinxian_jd9366ts_wt_dsi_vdo_90hz_csot") != 0){
+        JD_I("Lcm_name_tp Match failed\n");
+        return -1;
+    }
 
     pChip = kzalloc(sizeof(struct jadard_support_chip), GFP_KERNEL);
     if (pChip == NULL) {

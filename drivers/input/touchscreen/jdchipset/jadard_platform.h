@@ -20,11 +20,11 @@
 extern bool jd_g_dbg_enable;
 extern bool jd_g_esd_check_enable;
 #define JD_I(x...) \
-do { if (!jd_g_esd_check_enable) printk("[JDTP] " x); } while (0)
-#define JD_W(x...) printk("[JDTP][WARNING] " x)
-#define JD_E(x...) printk("[JDTP][ERROR] " x)
+do { if (!jd_g_esd_check_enable) printk("[touchpanel_JDTP] " x); } while (0)
+#define JD_W(x...) printk("[touchpanel_JDTP][WARNING] " x)
+#define JD_E(x...) printk("[touchpanel_JDTP][ERROR] " x)
 #define JD_D(x...) \
-do { if (jd_g_dbg_enable) printk("[JDTP][DEBUG] " x); } while (0)
+do { if (jd_g_dbg_enable) printk("[touchpanel_JDTP][DEBUG] " x); } while (0)
 #else
 #define JD_I(x...)
 #define JD_W(x...)

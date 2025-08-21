@@ -104,6 +104,7 @@ struct JD9366TP_ESRAM_INFO_CONTENT_ADDR {
 
 struct JD9366TP_CHIP_INFO {
     bool back_door_mode;
+    uint8_t tcb_bus_speed;
     struct JD9366TP_DSRAM_HOST_ADDR dsram_host_addr;
     struct JD9366TP_DSRAM_DEBUG_ADDR dsram_debug_addr;
     struct JD9366TP_ESRAM_INFO_CONTENT_ADDR esram_info_content_addr;

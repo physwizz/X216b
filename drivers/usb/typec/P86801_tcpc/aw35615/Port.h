@@ -60,6 +60,16 @@ struct Port {
 	AW_U8                  old_pe_state;
 	AW_U8                  old_policy_state;
 	AW_U8                  old_ConnState;
+
+	AW_U32                 SINK_num;
+	AW_U8                  SINK_Flag;
+	AW_BOOL                sink_timer;
+	AW_BOOL                bist_doing;
+	AW_U32                 SOURCE_num;
+	AW_U8                  SOURCE_Flag;
+	AW_U8                  SOURCE_Flag_end;
+	AW_U8                  get_sink_cap_flag;
+	AW_U8                  sink_bist_reg;
 	AW_U16                 snk_pdo_size;
 	AW_U32                 snk_pdo_vol[7];
 	AW_U32                 snk_pdo_cur[7];
@@ -68,6 +78,7 @@ struct Port {
 	AW_U32                 src_pdo_cur[7];
 	AW_U8                  snk_tog_time; /* toggle sink time */
 	AW_U8                  src_tog_time; /* toggle source time */
+	AW_S32                 usb_commcapable;
 
 	/* All Type C State Machine variables */
 	CCTermType              CCTerm;                     /* Active CC */
@@ -100,6 +111,7 @@ struct Port {
 	AW_BOOL                isContractValid;          /* PD Contract Valid */
 	AW_BOOL                IsHardReset;              /* HR is occurring */
 	AW_BOOL                IsPRSwap;                 /* PR is occurring */
+	AW_BOOL                IsPRSwapOk;               /* PR is ok */
 	AW_BOOL                IsVCONNSource;            /* VConn state */
 	AW_BOOL                USBPDTxFlag;              /* Have msg to Tx */
 	AW_U8                  CollisionCounter;         /* Collisions for PE */
@@ -172,6 +184,7 @@ struct Port {
 	ExtMsgState_t          ExtTxOrRx;                  /* Tx' or Rx'ing  */
 	ExtHeader_t            ExtTxHeader;
 	ExtHeader_t            ExtRxHeader;
+	AW_BOOL                GetExtFlag;
 	AW_BOOL                ExtWaitTxRx;                /* Waiting to Tx/Rx */
 	AW_U16                 ExtChunkOffset;             /* Next chunk offset */
 	AW_U8                  ExtMsgBuffer[260];

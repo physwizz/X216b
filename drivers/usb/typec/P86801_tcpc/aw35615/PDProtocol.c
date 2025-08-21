@@ -27,14 +27,17 @@
 void USBPDProtocol(Port_t *port)
 {
 	if (port->Registers.Status.I_HARDRST || port->Registers.Status.I_HARDSENT) {
-		port->Registers.Switches.AUTO_CRC = 0;
-		DeviceWrite(port, regSwitches1, 1, &port->Registers.Switches.byte[1]);
 
 		ResetProtocolLayer(port, AW_TRUE);
 		if (port->PolicyIsSource) {
 			TimerStart(&port->PolicyStateTimer, tPSHardReset);
 			SetPEState(port, peSourceTransitionDefault);
 		} else {
+			if (port->get_sink_cap_flag) {
+				port->Registers.Switches.AUTO_CRC = 0;
+				DeviceWrite(port, regSwitches1, 1,
+						&port->Registers.Switches.byte[1]);
+			}
 			SetPEState(port, peSinkTransitionDefault);
 		}
 	} else {
@@ -444,6 +447,11 @@ void ProtocolTransmitMessage(Port_t *port)
 	/* Load the CRC, EOP and stop sequence */
 	ProtocolLoadEOP(port);
 
+	port->Registers.Control.N_RETRIES = DPM_Retries(port, port->ProtocolMsgTxSop);
+	port->Registers.Control.AUTO_RETRY = 1;
+	port->Registers.Control.SEND_HARDRESET = 0;
+	DeviceWrite(port, regControl3, 1, &port->Registers.Control.byte[3]);
+
 	/* Commit the FIFO to the device */
 	if (DeviceWrite(port, regFIFO, port->ProtocolTxBytes,
 					&port->ProtocolTxBuffer[0]) == AW_FALSE) {
@@ -454,10 +462,6 @@ void ProtocolTransmitMessage(Port_t *port)
 		return;
 	}
 
-	port->Registers.Control.N_RETRIES = DPM_Retries(port, port->ProtocolMsgTxSop);
-	port->Registers.Control.AUTO_RETRY = 1;
-
-	DeviceWrite(port, regControl3, 1, &port->Registers.Control.byte[3]);
 	port->Registers.Control.TX_START = 1;
 	DeviceWrite(port, regControl0, 1, &port->Registers.Control.byte[0]);
 	port->Registers.Control.TX_START = 0;
@@ -484,6 +488,11 @@ void ProtocolSendingMessage(Port_t *port)
 		port->Registers.Status.I_COLLISION = 0;
 		port->PDTxStatus = txCollision;
 		port->ProtocolState = PRLIdle;
+		if ((port->PolicyState == peSinkGiveSinkCap) || (port->PolicyState == peSourceGiveSinkCaps)) {
+			AW_LOG("I_COLLISION good crc err\n");
+			port->ProtocolState = PRLTxSendingMessage;
+			port->PDTxStatus = txBusy;
+		}
 	} else if (port->Registers.Status.I_RETRYFAIL) {
 		port->Registers.Status.I_RETRYFAIL = 0;
 		port->PDTxStatus = txError;
@@ -505,6 +514,7 @@ void ProtocolVerifyGoodCRC(Port_t *port)
 {
 	/* AW_LOG("enter\n"); */
 	AW_U8 data[4];
+	AW_U8 regStatus;
 	sopMainHeader_t header;
 	SopType sop;
 
@@ -527,8 +537,12 @@ void ProtocolVerifyGoodCRC(Port_t *port)
 		if (header.MessageID != MIDcompare) {
 			/* Read out the 4 CRC bytes to move the addr to the next packet */
 			DeviceRead(port, regFIFO, 4, data);
-			port->PDTxStatus = txError;
-			port->ProtocolState = PRLIdle;
+			DeviceRead(port, regStatus0a, 1, &regStatus);
+			if (regStatus & 0x10) {
+				AW_LOG("RETRYFAIL\n");
+				port->PDTxStatus = txError;
+				port->ProtocolState = PRLIdle;
+			}
 		} else {
 			if (sop != SOP_TYPE_ERROR) {
 				/* Increment and roll over */
@@ -553,13 +567,19 @@ void ProtocolVerifyGoodCRC(Port_t *port)
 	} else {
 		port->ProtocolState = PRLIdle;
 		port->PDTxStatus = txError;
+		AW_LOG("tx err\n");
 
 		/* Pass header and SOP* on to GetRxPacket */
 		port->PolicyRxHeader.word = header.word;
 		port->ProtocolMsgRxSop = sop;
 
-		/* Rare case, next received message preempts GoodCRC */
-		ProtocolGetRxPacket(port, AW_TRUE);
+		if ((port->PolicyState == peSinkGiveSinkCap) || (port->PolicyState == peSourceGiveSinkCaps)) {
+			ProtocolFlushRxFIFO(port);
+		} else {
+			/* Rare case, next received message preempts GoodCRC */
+			ProtocolGetRxPacket(port, AW_TRUE);
+		}
+		port->ProtocolMsgRx = AW_FALSE;
 	}
 }
 

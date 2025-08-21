@@ -450,8 +450,7 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
 	"/lib/firmware",
-	"/vendor/firmware", //P86801AA1-1797, caoxin2.wt, add, 20230525, kb bringup
-	"/vendor/etc/firmware"
+	"/vendor/firmware" //P86801AA1-1797, caoxin2.wt, add, 20230525, kb bringup
 };
 
 /*

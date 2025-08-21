@@ -1,7 +1,14 @@
 #include "jadard_platform.h"
 #include "jadard_common.h"
 #include "jadard_module.h"
-
+#ifdef SEC_TSP_FACTORY_TEST
+#include <linux/input/sec_cmd.h>
+#endif
+#ifdef CONFIG_QGKI_BUILD
+#include <linux/tp_notifier.h>
+bool jd_earphone_mode_status;
+EXPORT_SYMBOL(jd_earphone_mode_status);
+#endif
 struct jadard_module_fp g_module_fp;
 struct jadard_ts_data *pjadard_ts_data = NULL;
 struct jadard_ic_data *pjadard_ic_data = NULL;
@@ -9,6 +16,7 @@ struct jadard_report_data *pjadard_report_data = NULL;
 struct jadard_host_data *pjadard_host_data = NULL;
 struct jadard_debug *pjadard_debug = NULL;
 struct proc_dir_entry *pjadard_touch_proc_dir = NULL;
+struct proc_dir_entry *pjadard_fac_proc_dir = NULL;
 bool jd_g_esd_check_enable = false;
 
 #ifdef CONFIG_TOUCHSCREEN_JADARD_DEBUG
@@ -97,7 +105,7 @@ uint16_t jd_gest_key_def[JD_GEST_SUP_NUM] = {
 bool proc_smwp_send_flag = false;
 #define JADARD_PROC_SMWP_FILE "SMWP"
 struct proc_dir_entry *jadard_proc_SMWP_file = NULL;
-#define JADARD_PROC_GESTURE_FILE "GESTURE"
+#define JADARD_PROC_GESTURE_FILE "GESTURE_JD"
 struct proc_dir_entry *jadard_proc_GESTURE_file = NULL;
 #endif
 
@@ -108,8 +116,10 @@ struct proc_dir_entry *jadard_proc_high_sensitivity_file = NULL;
 #endif
 
 #ifdef CONFIG_TOUCHSCREEN_JADARD_SORTING
+#define JADARD_PROC_FAC_TEST_FILE  "ctp_openshort_test"	//"sorting_test"
 #define JADARD_PROC_SORTING_TEST_FILE  "sorting_test"
 struct proc_dir_entry *jadard_proc_sorting_test_file;
+struct proc_dir_entry *jadard_proc_fac_test_file;
 #endif
 
 #ifdef JD_ROTATE_BORDER
@@ -1163,7 +1173,19 @@ static int jadard_err_ctrl(uint8_t *buf, int buf_len, int ts_status)
         if (buf[i] == 0x00) {
             if (i == buf_len - 1) {
                 ts_status = JD_TS_UNUSUAL_DATA_FAIL;
-                JD_I("Bypass all zero\n");
+                JD_D("Bypass all zero\n");
+                goto GOTO_END;
+            }
+        } else {
+            break;
+        }
+    }
+
+    for (i = 0; i < buf_len; i++) {
+        if (buf[i] == 0xFF) {
+            if (i == buf_len - 1) {
+                ts_status = JD_TS_UNUSUAL_DATA_FAIL;
+                JD_D("Bypass all 0xFF\n");
                 goto GOTO_END;
             }
         } else {
@@ -1227,15 +1249,14 @@ static int jadard_touch_raw_get(uint8_t *buf, int buf_len, int ts_status)
         kfree(rdata);
         jd_diag_mutual_cnt++;
         return JD_TS_GET_DATA_FAIL;
-    }
-    else {
+    } else {
         if (ReCode == JD_REPORT_DATA) { /* output_buf addr > coordinate_report addr */
             memcpy(buf, rdata, buf_len);
             index += JD_TOUCH_MAX_DATA_SIZE;
-        }
-        else { /* ReCode == 0 */
+        } else { /* ReCode == 0 */
             if (!g_module_fp.fp_get_touch_data(buf, buf_len)) {
                 JD_E("%s: can't read data from chip!\n", __func__);
+                kfree(rdata);
                 return JD_TS_GET_DATA_FAIL;
             }
         }
@@ -1244,7 +1265,7 @@ static int jadard_touch_raw_get(uint8_t *buf, int buf_len, int ts_status)
     for (i = 0; i < y_num; i++) {
         for (j = 0; j < x_num; j++) {
 
-            if (DataType == JD_DATA_TYPE_Difference) {
+            if (DataType == JD_DATA_TYPE_Difference || DataType == JD_DATA_TYPE_LAPLACE) {
                 if (pjadard_ts_data->rawdata_little_endian) {
                     new_data = (((int8_t)rdata[index + 1] << 8) | rdata[index]);
                 } else {
@@ -1916,6 +1937,7 @@ static ssize_t jd_GESTURE_show(struct device *dev, struct device_attribute *attr
     return scnprintf(buf, 64, "gesture_en = %s\n", buf_tmp);
 }
 
+extern bool jd_gestrue_status;
 static ssize_t jd_GESTURE_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
 {
     struct jadard_ts_data *ts = pjadard_ts_data;
@@ -1924,10 +1946,13 @@ static ssize_t jd_GESTURE_store(struct device *dev, struct device_attribute *att
     for (i = 0; i < size - 1 && i < JD_GEST_SUP_NUM; i++) {
         if (buf[i] == '1') {
             ts->gesture_cust_en[i] = 1;
+            jd_gestrue_status = 1;
+
         } else {
             ts->gesture_cust_en[i] = 0;
+            jd_gestrue_status = 0;
         }
-        JD_I("gesture_cust_en[%d] = %d\n", i, ts->gesture_cust_en[i]);
+        JD_I("%s:gesture_cust_en[%d] = %d, jd_gestrue_status = %d\n", __func__, i, ts->gesture_cust_en[i], jd_gestrue_status);
     }
 
     return size;
@@ -1941,9 +1966,163 @@ static struct device_attribute jd_GESTURE_attr = {
     .show = jd_GESTURE_show,
     .store = jd_GESTURE_store,
 };
+#ifdef SEC_TSP_FACTORY_TEST
+
+static void get_fw_ver_bin(void *device_data)
+{
+    struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+    char buff[16] = { 0 };
+    sec_cmd_set_default_result(sec);
+    g_module_fp.fp_read_fw_ver();
+    snprintf(buff, sizeof(buff), "JD9366,%04x", pjadard_ic_data->fw_cid_ver);
+
+    sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+    sec->cmd_state = SEC_CMD_STATUS_OK;
+    JD_I( "%s: %s,sec->cmd_state == %d\n", __func__, buff);
+    sec_cmd_set_cmd_exit(sec);
+}
+
+static void get_fw_ver_ic(void *device_data)
+{
+    struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+    char buff[16] = { 0 };
+    sec_cmd_set_default_result(sec);
+
+    g_module_fp.fp_read_fw_ver();
+    snprintf(buff, sizeof(buff), "JD9366,%04x", pjadard_ic_data->fw_cid_ver);
+
+    sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+    sec->cmd_state = SEC_CMD_STATUS_OK;
+    JD_I( "%s: %s,sec->cmd_state == %d\n", __func__, buff);
+    sec_cmd_set_cmd_exit(sec);
+}
+
+static void aot_enable(void *device_data)
+{
+    struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+    char buff[SEC_CMD_STR_LEN] = { 0 };
+    unsigned int buf[4];
+    struct jadard_ts_data *ts = pjadard_ts_data;
+
+    JD_I("aot_enable Enter.\n");
+    sec_cmd_set_default_result(sec);
+
+    buf[0] = sec->cmd_param[0];
+
+    if (buf[0] == 1) {
+        ts->SMWP_enable = 1;
+        ts->gesture_cust_en[0] = true;
+        jd_gestrue_status = 1;
+    } else {
+        ts->SMWP_enable = 0;
+        ts->gesture_cust_en[0] = false;
+        jd_gestrue_status = 0;
+    }
+
+    g_module_fp.fp_set_SMWP_enable(ts->SMWP_enable);
+    JD_I("%s: SMART_WAKEUP_enable = %d\n", __func__, ts->SMWP_enable);
+
+    snprintf(buff, sizeof(buff), "%s", "OK");
+    sec->cmd_state = SEC_CMD_STATUS_OK;
+
+    sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+    JD_I( "%s: %s,sec->cmd_state == %d\n", __func__, buff, sec->cmd_state);
+    sec_cmd_set_cmd_exit(sec);
+}
+
+static void glove_mode(void *device_data)
+{
+    struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+    char buff[SEC_CMD_STR_LEN] = { 0 };
+    unsigned int buf[4];
+    struct jadard_ts_data *ts = pjadard_ts_data;
+
+    JD_I("HSEN_enable Enter.\n");
+    sec_cmd_set_default_result(sec);
+
+    buf[0] = sec->cmd_param[0];
+
+    if (buf[0] == 1) {
+        ts->high_sensitivity_enable = true;
+    } else {
+        ts->high_sensitivity_enable = false;
+    }
+
+    g_module_fp.fp_set_high_sensitivity(ts->high_sensitivity_enable);
+    JD_I("%s: High_sensitivity_enable = %d.\n", __func__, ts->high_sensitivity_enable);
+
+    snprintf(buff, sizeof(buff), "%s", "OK");
+    sec->cmd_state = SEC_CMD_STATUS_OK;
+
+    sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+    JD_I( "%s: %s,sec->cmd_state == %d\n", __func__, buff, sec->cmd_state);
+    sec_cmd_set_cmd_exit(sec);
+}
+
+static void not_support_cmd(void *device_data)
+{
+    struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+    char buff[SEC_CMD_STR_LEN] = { 0 };
+
+    sec_cmd_set_default_result(sec);
+
+    snprintf(buff, sizeof(buff), "%s", "NA");
+
+    sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+    sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
+    sec_cmd_set_cmd_exit(sec);
+
+    JD_I("%s: %s\n", __func__, buff);
+}
+
+struct sec_cmd jd_commands[] = {
+    {SEC_CMD("get_fw_ver_bin", get_fw_ver_bin),},
+    {SEC_CMD("get_fw_ver_ic", get_fw_ver_ic),},
+    {SEC_CMD("aot_enable", aot_enable),},
+    {SEC_CMD("glove_mode", glove_mode),},
+    {SEC_CMD("not_support_cmd", not_support_cmd),},
+};
+#endif
+
+#ifdef CONFIG_QGKI_BUILD
+static int jadard_earphone_notifier_callback(struct notifier_block *self, unsigned long event, void *v)
+{
+    int earjack_plug_status = 0;
+    struct jadard_ts_data *ts = pjadard_ts_data;
+
+    JD_I("Enter %s\n", __func__);
+    earjack_plug_status = (int)event;
+
+    if (ts->suspended == false) {
+        if (ts->earphone_enable ^ earjack_plug_status) {
+            ts->earphone_enable = earjack_plug_status;
+            g_module_fp.fp_set_earphone_enable(ts->earphone_enable+1);
+        }
+    }
+
+    JD_I("Exit %s\n", __func__);
+    return 0;
+}
+static int jadard_earphone_notifier_callback_init(struct jadard_ts_data *ts)
+{
+    int ret = 0;
+    JD_I("Enter %s\n", __func__);
+
+    ts->notifier_earjack.notifier_call = jadard_earphone_notifier_callback;
+    ret = earjack_register_notifier_chain_for_tp(&ts->notifier_earjack);
+    if (ret < 0)
+        JD_E("[earjack]Unable to register earjack_notifier: %d", ret);
+
+    JD_I("Exit %s\n", __func__);
+    return ret;
+}
+#endif
 
 static void jd_gesture_node_init(void)
 {
+#ifdef SEC_TSP_FACTORY_TEST
+    int ret;
+#endif
     jd_gesture_class = class_create(THIS_MODULE, "gesture");
     if (IS_ERR(jd_gesture_class)) {
         JD_E("Failed to create class (gesture)!\n");
@@ -1964,6 +2143,15 @@ static void jd_gesture_node_init(void)
 
     if (device_create_file(jd_GESTURE_dev, &jd_GESTURE_attr) < 0)
         JD_E("Failed to create device file (%s)!\n", jd_GESTURE_attr.attr.name);
+
+#ifdef SEC_TSP_FACTORY_TEST
+    ret = sec_cmd_init(&pjadard_ts_data->sec, jd_commands, \
+                        ARRAY_SIZE(jd_commands), SEC_CLASS_DEVT_TSP);
+    if (ret < 0) {
+        JD_E("%s: Failed to sec_cmd_init\n", __func__);
+//        goto err_sec_cmd_init_failed;
+    }
+#endif
 }
 
 static void jd_gesture_node_remove(void)
@@ -1983,6 +2171,9 @@ static void jd_gesture_node_remove(void)
         class_destroy(jd_gesture_class);
         jd_gesture_class = NULL;
     }
+#ifdef SEC_TSP_FACTORY_TEST
+    sec_cmd_exit(&pjadard_ts_data->sec, SEC_CLASS_DEVT_TSP);
+#endif
 }
 #endif
 #endif
@@ -2029,6 +2220,23 @@ static ssize_t jadard_sorting_test_read(struct file *file, char *buf,
     return ret;
 }
 
+static int fac_openshort_test_proc_show(struct seq_file *m, void *v)
+{
+    int val;
+    val = g_module_fp.fp_sorting_test();
+    JD_E("%s :sorting_test %d\n", __func__,val);
+    if(val == 0)
+        seq_printf(m, "%s\n", "result=1");
+    else
+        seq_printf(m, "%s\n", "result=0");
+    return 0;
+}
+
+static int32_t fac_selftest_proc_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, fac_openshort_test_proc_show, NULL);
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
 static struct proc_ops jadard_proc_sorting_test_ops = {
     .proc_read = jadard_sorting_test_read,
@@ -2048,6 +2256,14 @@ static struct proc_ops jadard_proc_black_test_ops = {
 static struct file_operations jadard_proc_sorting_test_ops = {
     .owner = THIS_MODULE,
     .read = jadard_sorting_test_read,
+};
+
+static const struct file_operations jadard_proc_fac_test_ops = {
+    .owner   = THIS_MODULE,
+    .open    = fac_selftest_proc_open,
+    .read    = seq_read,
+    .llseek  = seq_lseek,
+    .release = seq_release,
 };
 
 #if defined(JD_OPPO_FUNC)
@@ -2449,6 +2665,7 @@ static void jd_proximity_node_remove(void)
 int jadard_common_proc_init(void)
 {
     pjadard_touch_proc_dir = proc_mkdir(JADARD_PROC_TOUCH_FOLDER, NULL);
+    pjadard_fac_proc_dir = proc_mkdir(JADARD_PROC_FAC_FOLDER, NULL);
 #if defined(JD_OPPO_FUNC)
     pjadard_touchpanel_proc_dir = proc_mkdir(JADARD_PROC_TOUCHPANLE_FOLDER, NULL);
 #endif
@@ -2467,6 +2684,14 @@ int jadard_common_proc_init(void)
         JD_E(" %s: proc self_test file create failed!\n", __func__);
         goto fail_1;
     }
+
+    jadard_proc_fac_test_file = proc_create(JADARD_PROC_FAC_TEST_FILE, (S_IRUGO),
+                                        pjadard_fac_proc_dir, &jadard_proc_fac_test_ops);
+    if (jadard_proc_fac_test_file == NULL) {
+        JD_E(" %s: proc openshort file create failed!\n", __func__);
+        goto fail_1;
+    }
+
 #if defined(JD_OPPO_FUNC)
     pjadard_baseline_test_file = proc_create(JADARD_PROC_BASELINE_TEST_FILE, (S_IRUGO),
                                         pjadard_touchpanel_proc_dir, &jadard_proc_baseline_test_ops);
@@ -2568,7 +2793,9 @@ fail_1_2:
     remove_proc_entry(JADARD_PROC_BASELINE_TEST_FILE, pjadard_touchpanel_proc_dir);
 fail_1_1:
 #endif
+
     remove_proc_entry(JADARD_PROC_SORTING_TEST_FILE, pjadard_touch_proc_dir);
+    remove_proc_entry(JADARD_PROC_FAC_TEST_FILE, pjadard_fac_proc_dir);
 
 fail_1:
 #endif
@@ -2579,6 +2806,7 @@ fail_1:
 void jadard_common_proc_deinit(void)
 {
 #ifdef CONFIG_TOUCHSCREEN_JADARD_SORTING
+    remove_proc_entry(JADARD_PROC_FAC_TEST_FILE, pjadard_fac_proc_dir);
     remove_proc_entry(JADARD_PROC_SORTING_TEST_FILE, pjadard_touch_proc_dir);
 #if defined(JD_OPPO_FUNC)
     remove_proc_entry(JADARD_PROC_BASELINE_TEST_FILE, pjadard_touchpanel_proc_dir);
@@ -2739,7 +2967,7 @@ static void jadard_fb_register(struct work_struct *work)
 }
 #endif /* JD_CONFIG_FB */
 
-#ifdef JD_CONFIG_SPRD_DRM
+#if defined(JD_CONFIG_SPRD_DRM) || defined(JD_RESUME_NOT_WAIT_FW)
 /*
 *jadard_resume_work_function
 *Param：struct work_struct *work
@@ -2751,6 +2979,7 @@ static void jadard_resume_work_function(struct work_struct *work)
     jadard_chip_common_resume(pjadard_ts_data);
 }
 
+#if defined(JD_CONFIG_SPRD_DRM)
 static int jadard_drm_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
     JD_I("event = %d, pjadard_ts_data->suspended = %d", (int)event, pjadard_ts_data->suspended);
@@ -2763,6 +2992,7 @@ static int jadard_drm_notifier_callback(struct notifier_block *self, unsigned lo
 
     return 0;
 }
+#endif
 #endif
 
 #if defined(JD_CONFIG_DRM_MTK_V2)
@@ -2802,11 +3032,14 @@ static int jadard_disp_notifier_callback(struct notifier_block *nb, unsigned lon
 }
 #endif
 
-#if defined(JD_ESD_CHECK) && defined(JD_ZERO_FLASH)
+#if defined(JD_ESD_CHECK)
+#define JD_CPU_PC (0x4000800C)
 static void jadard_esd_check(struct work_struct *work)
 {
+#ifdef JD_ZERO_FLASH
     int upgrade = 0;
     int counter = 0;
+#endif
     int same_data = 0;
     uint8_t pre_rdata[4];
     uint8_t rdata[4], i, bypass;
@@ -2819,7 +3052,7 @@ static void jadard_esd_check(struct work_struct *work)
             mutex_lock(&(pjadard_ts_data->sorting_active));
             /* jd_g_esd_check_enable = true; */
 
-            g_module_fp.fp_register_read(0x4000800C, rdata, 4);
+            g_module_fp.fp_register_read(JD_CPU_PC, rdata, 4);
 
             if ((pre_rdata[0] == rdata[0]) && (pre_rdata[1] == rdata[1]) && (pre_rdata[2] == rdata[2]) && (pre_rdata[3] == rdata[3])) {
                 same_data++;
@@ -2835,7 +3068,7 @@ static void jadard_esd_check(struct work_struct *work)
                 if ((rdata[0] == 0xD8) || (rdata[0] == 0xDA) || (rdata[0] == 0xDC) || (rdata[0] == 0xDE) ||
                     (rdata[0] == 0xE0) || (rdata[0] == 0xE2) || (rdata[0] == 0xE4) || (rdata[0] == 0xE6) ||
                     (same_data >= 5)) {
-                    if (pjadard_ts_data->power_on_upgrade == false) {
+                    if (pjadard_ts_data->fw_ready == true) {
                         JD_I("PC(0-3):0x%02x, 0x%02x, 0x%02x, 0x%02x\n", rdata[0], rdata[1], rdata[2], rdata[3]);
 
                         if (same_data >= 5) {
@@ -2843,7 +3076,7 @@ static void jadard_esd_check(struct work_struct *work)
                             bypass = 0;
 
                             for (i = 0; i < 10; i++) {
-                                g_module_fp.fp_register_read(0x4000800C, rdata, 4);
+                                g_module_fp.fp_register_read(JD_CPU_PC, rdata, 4);
                                 if ((pre_rdata[0] != rdata[0]) || (pre_rdata[1] != rdata[1]) ||
                                     (pre_rdata[2] != rdata[2]) || (pre_rdata[3] != rdata[3])) {
                                     bypass = 1;
@@ -2852,6 +3085,7 @@ static void jadard_esd_check(struct work_struct *work)
                             }
 
                             if (bypass == 0) {
+                            #ifdef JD_ZERO_FLASH
                                 JD_I("Upgrade fw by the same pc\n");
                                 pjadard_ts_data->power_on_upgrade = true;
 
@@ -2861,8 +3095,16 @@ static void jadard_esd_check(struct work_struct *work)
                                 }
                                 jadard_int_enable(true);
                                 pjadard_ts_data->power_on_upgrade = false;
+                                #else
+                                JD_I("Reset Touch chip by the same pc\n");
+                                jadard_int_enable(false);
+                                g_module_fp.fp_soft_reset();
+                                jadard_report_all_leave_event(pjadard_ts_data);
+                                jadard_int_enable(true);
+                            #endif
                             }
                         } else {
+                        #ifdef JD_ZERO_FLASH
                             pjadard_ts_data->power_on_upgrade = true;
 
                             if (g_module_fp.fp_0f_esd_upgrade_fw(jd_i_CTPM_firmware_name) >= 0) {
@@ -2871,11 +3113,19 @@ static void jadard_esd_check(struct work_struct *work)
                             }
                             jadard_int_enable(true);
                             pjadard_ts_data->power_on_upgrade = false;
+                            #else
+                            JD_I("Reset Touch chip by fault address\n");
+                            jadard_int_enable(false);
+                            g_module_fp.fp_soft_reset();
+                            jadard_report_all_leave_event(pjadard_ts_data);
+                            jadard_int_enable(true);
+                        #endif
                         }
                     }
                 }
             }
 
+#ifdef JD_ZERO_FLASH
             /* Pram CRC check */
             if ((upgrade == 0) && (counter >= 4)) {
                 pjadard_report_data->crc_start = 1;
@@ -2891,11 +3141,14 @@ static void jadard_esd_check(struct work_struct *work)
                 pjadard_report_data->crc_start = 0;
             }
             upgrade = 0;
+#endif
             jd_g_esd_check_enable = false;
             mutex_unlock(&(pjadard_ts_data->sorting_active));
 
-            mdelay(1000);
+            msleep(1000);
+#ifdef JD_ZERO_FLASH
             counter++;
+#endif
         }
     }
 }
@@ -2908,11 +3161,12 @@ int jadard_chip_common_init(void)
     struct jadard_ts_data *ts = pjadard_ts_data;
     struct jadard_platform_data *pdata = NULL;
     int err = 0;
-	int ret = -1;
+    int ret = -1;
     JD_I("%s: enter\n", __func__);
+
+    ts->fw_ready = false;
 #ifdef JD_ZERO_FLASH
     ts->power_on_upgrade = true;
-    ts->fw_ready = false;
 #endif
 
     pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
@@ -2993,12 +3247,11 @@ int jadard_chip_common_init(void)
     ts->jadard_0f_upgrade_wq = create_singlethread_workqueue("JD_0f_update_reuqest");
     INIT_DELAYED_WORK(&ts->work_0f_upgrade, g_module_fp.fp_0f_operation);
     queue_delayed_work(ts->jadard_0f_upgrade_wq, &ts->work_0f_upgrade, msecs_to_jiffies(JD_UPGRADE_DELAY_TIME));
-
+#endif
 #ifdef JD_ESD_CHECK
     ts->jadard_esd_check_wq = create_singlethread_workqueue("JD_esd_check_reuqest");
     INIT_DELAYED_WORK(&ts->work_esd_check, jadard_esd_check);
     queue_delayed_work(ts->jadard_esd_check_wq, &ts->work_esd_check, msecs_to_jiffies(JD_ESD_CHECK_DELAY_TIME));
-#endif
 #endif
 
     g_module_fp.fp_touch_info_set();
@@ -3094,6 +3347,15 @@ int jadard_chip_common_init(void)
     }
 #endif
 
+#if defined(JD_RESUME_NOT_WAIT_FW)
+    ts->jadard_resume_wq = create_singlethread_workqueue("JD_resume_wq");
+    if (!ts->jadard_resume_wq) {
+        JD_E("create JD_resume workqueue failed\n");
+        goto err_create_jd_resume_wq_failed;
+    }
+    INIT_DELAYED_WORK(&ts->jadard_resume_work, jadard_resume_work_function);
+#endif
+
 #if defined(JD_CONFIG_SPRD_DRM)
     ts->jadard_resume_wq = create_singlethread_workqueue("jadard_resume_wq");
     INIT_WORK(&ts->jadard_resume_work, jadard_resume_work_function);
@@ -3114,7 +3376,9 @@ int jadard_chip_common_init(void)
         goto err_register_mtk_disp_notif_failed;
     }
 #endif
-
+#ifdef CONFIG_QGKI_BUILD
+	jadard_earphone_notifier_callback_init(ts);
+#endif
 #ifdef JD_ZERO_FLASH
     /* Close ATTN before fw upgrade ready */
     jadard_int_enable(false);
@@ -3149,6 +3413,11 @@ err_register_mtk_disp_notif_failed:
 #if defined(JD_CONFIG_SPRD_DRM)
 err_register_drm_notif_failed:
 #endif
+#if defined(JD_RESUME_NOT_WAIT_FW)
+    cancel_delayed_work_sync(&ts->jadard_resume_work);
+    destroy_workqueue(ts->jadard_resume_wq);
+err_create_jd_resume_wq_failed:
+#endif
 #if defined(JD_CONFIG_NODE)
 #if defined(JD_CONFIG_SPRD_DRM)
     jadard_ts_filesys_remove(ts);
@@ -3181,12 +3450,12 @@ err_get_intr_bit_failed:
     }
 
 err_input_register_device_failed:
-#ifdef JD_ZERO_FLASH
 #ifdef JD_ESD_CHECK
     cancel_delayed_work_sync(&ts->work_esd_check);
     destroy_workqueue(ts->jadard_esd_check_wq);
 #endif
 
+#ifdef JD_ZERO_FLASH
     cancel_delayed_work_sync(&ts->work_0f_upgrade);
     destroy_workqueue(ts->jadard_0f_upgrade_wq);
 #endif
@@ -3269,6 +3538,11 @@ void jadard_chip_common_deinit(void)
     jadard_ts_filesys_remove(ts);
 #endif
 
+#if defined(JD_RESUME_NOT_WAIT_FW)
+    cancel_delayed_work_sync(&ts->jadard_resume_work);
+    destroy_workqueue(ts->jadard_resume_wq);
+#endif
+
     jadard_ts_free_interrupt();
 
 #ifdef CONFIG_TOUCHSCREEN_JADARD_DEBUG
@@ -3309,12 +3583,12 @@ void jadard_chip_common_deinit(void)
 
     input_free_device(ts->input_dev);
 
-#ifdef JD_ZERO_FLASH
 #ifdef JD_ESD_CHECK
     cancel_delayed_work_sync(&ts->work_esd_check);
     destroy_workqueue(ts->jadard_esd_check_wq);
 #endif
 
+#ifdef JD_ZERO_FLASH
     cancel_delayed_work_sync(&ts->work_0f_upgrade);
     destroy_workqueue(ts->jadard_0f_upgrade_wq);
 #endif
@@ -3380,6 +3654,12 @@ void jadard_chip_common_deinit(void)
     kfree(ts);
 }
 
+ void jadard_rst_gpio_set(int pinnum, uint8_t value)
+{
+    gpio_direction_output(pinnum, value);
+}
+EXPORT_SYMBOL(jadard_rst_gpio_set);
+
 int jadard_chip_common_suspend(struct jadard_ts_data *ts)
 {
     bool cancel_diag_thread = true;
@@ -3429,13 +3709,13 @@ int jadard_chip_common_suspend(struct jadard_ts_data *ts)
         return 0;
     }
 #endif
-	
+
 #if (JD_PROXIMITY_MODE != JD_PROXIMITY_SUSPEND_RESUME)
     jadard_int_enable(false);
     atomic_set(&ts->suspend_mode, 1);
 #endif
-
-//	jadard_set_resgpio(0);
+    //set reset low
+    jadard_rst_gpio_set(ts->rst_gpio, 0);
 
     JD_I("%s: end\n", __func__);
     return 0;
@@ -3455,11 +3735,19 @@ int jadard_chip_common_resume(struct jadard_ts_data *ts)
         ts->suspended = false;
     }
 
+    //pin reset
+    g_module_fp.fp_pin_reset();
+
     atomic_set(&ts->suspend_mode, 0);
 
 #if defined(JD_SMART_WAKEUP)
     if (ts->SMWP_enable) {
         irq_set_irq_wake(ts->jd_irq , 0);
+    } else {
+#ifdef JD_ZERO_FLASH
+        JD_I("%s: Not check pram crc\n", __func__);
+        ts->power_on_upgrade = true;
+#endif
     }
 #endif
 
@@ -3472,8 +3760,8 @@ int jadard_chip_common_resume(struct jadard_ts_data *ts)
         JD_I("Diag thread is active! Skip Update with zero flash\n");
     } else if (g_module_fp.fp_0f_upgrade_fw(jd_i_CTPM_firmware_name) < 0) {
         JD_E("Something is wrong! Skip Update with zero flash\n");
-        return 0;
     }
+    g_module_fp.fp_read_fw_ver();
 #endif
 
     jadard_report_all_leave_event(ts);
@@ -3492,7 +3780,11 @@ int jadard_chip_common_resume(struct jadard_ts_data *ts)
         queue_delayed_work(ts->jadard_esd_check_wq, &ts->work_esd_check, 0);
     }
 #endif
-
+#ifdef CONFIG_QGKI_BUILD
+    if (jd_earphone_mode_status == 1) {
+        g_module_fp.fp_set_earphone_enable(2);
+    }
+#endif
     JD_I("%s: end \n", __func__);
     return 0;
 }

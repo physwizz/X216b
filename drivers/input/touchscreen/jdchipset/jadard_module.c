@@ -272,7 +272,7 @@ static void jadard_mcu_resume_set_func(bool suspended)
     g_module_fp.fp_set_rotate_border(pjadard_ts_data->rotate_border);
 #endif
 #ifdef JD_EARPHONE_DETECT
-    g_module_fp.fp_set_earphone_enable(pjadard_ts_data->earphone_enable);
+    //g_module_fp.fp_set_earphone_enable(pjadard_ts_data->earphone_enable);
 #endif
 }
 #endif

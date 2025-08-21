@@ -271,6 +271,7 @@
 #define SGM41542_BOOSTV_5300mV 5300
 
 #define SGM41542_VINDPM_3900mV 3900
+#define SGM41542_VINDPM_4700mV 4700
 #define SGM41542_VINDPM_5400mV 5400
 #define SGM41542_VINDPM_5900mV 5900
 #define SGM41542_VINDPM_7500mV 7500
@@ -287,8 +288,8 @@
 #define BC12_FLOAT_CHECK_MAX 1
 
 /*+P231130-06621 liwei19.wt 20231218,reduce the number of AFC and QC identification*/
-#define AFC_DETECT_TIME   25
-#define QC_DETECT_TIME    10
+#define AFC_DETECT_TIME   30
+#define QC_DETECT_TIME    15
 /*-P231130-06621 liwei19.wt 20231218,reduce the number of AFC and QC identification*/
 
 enum sgm41542_part_no {
@@ -382,6 +383,7 @@ struct sgm41542_device {
 	struct delayed_work rerun_apsd_work;
 	struct delayed_work detect_work;
 	struct delayed_work check_adapter_work;
+	struct delayed_work set_hiz_work;
 
 	enum sgm41542_part_no part_no;
 	int revision;

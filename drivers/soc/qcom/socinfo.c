@@ -1032,12 +1032,16 @@ msm_get_lcd_tp_info(struct device *dev,
 	char lcd_tp_info[20]= {0};
 	if(strstr(saved_command_line,"ft8203_apf")!= NULL){
 		strncpy(lcd_tp_info, "ft8203", strlen("ft8203"));
+	}else if(strstr(saved_command_line,"hx83102j_starry_agc") != NULL){
+		strncpy(lcd_tp_info, "starry_agc", strlen("starry_agc"));
+	}else if(strstr(saved_command_line,"icnl9951r_xinxian_agc") != NULL){
+		strncpy(lcd_tp_info, "xinxian_agc", strlen("xinxian_agc"));
 	}else if(strstr(saved_command_line,"hx83102j_starry") != NULL){
 		strncpy(lcd_tp_info, "starry", strlen("starry"));
 	}else if(strstr(saved_command_line,"hx83102j_lide") != NULL){
 		strncpy(lcd_tp_info, "lide", strlen("lide"));
-	}else if(strstr(saved_command_line,"icnl9951r_boe") != NULL){
-		strncpy(lcd_tp_info, "icnl9951r", strlen("icnl9951r"));
+	}else if(strstr(saved_command_line,"icnl9958r_boe") != NULL){
+		strncpy(lcd_tp_info, "icnl9958r", strlen("icnl9958r"));
 	}else if(strstr(saved_command_line,"ft8203_dsbj") != NULL){
 		strncpy(lcd_tp_info, "dsbj", strlen("dsbj"));
 	}else if(strstr(saved_command_line,"icnl9951r_hjr") != NULL){

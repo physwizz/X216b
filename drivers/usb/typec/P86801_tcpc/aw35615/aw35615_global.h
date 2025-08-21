@@ -7,6 +7,8 @@
 #include <linux/semaphore.h>
 #include <linux/workqueue.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pm_qos.h>
+#include <linux/alarmtimer.h>
 
 #include "Port.h"
 #include "modules/dpm.h"
@@ -24,15 +26,18 @@
 #endif // AW_DEBUG
 
 #define TICK_SCALE_TO_MS			(1)
+#define AW35615_CHIP_ID				(0x344f)
 
 struct aw35615_chip {
 	struct i2c_client *client;
 	struct tcpc_device *tcpc;
 	struct tcpc_desc *tcpc_desc;
+	struct pm_qos_request pm_gos_request;
 	AW_U16 chip_id;
 	AW_BOOL	is_vbus_present;
 	AW_U8 old_event;
 
+	AW_BOOL wakelock_flag;
 #ifdef AW_KERNEL_VER_OVER_4_19_1
 	struct wakeup_source *aw35615_wakelock;          // Wake lock
 #else
@@ -52,10 +57,18 @@ struct aw35615_chip {
 	struct work_struct sm_worker; /* Main state machine actions */
 	struct workqueue_struct *highpri_wq;
 	struct delayed_work init_delay_work;
+	struct work_struct bist_work;
 	AW_BOOL queued;
 
 	/* Timers */
+	struct hrtimer bist_timer;
 	struct hrtimer sm_timer;
+	struct alarm alarmtimer;
+	AW_U32 sink_timer;
+	AW_U32 source_timer;
+	AW_U32 source_end_timer;
+	AW_U8 sink_reg_bist;
+	AW_U8 source_reg_bist;
 
 	/* Port Object */
 	Port_t port;

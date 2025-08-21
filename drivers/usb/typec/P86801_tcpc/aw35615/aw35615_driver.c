@@ -19,7 +19,7 @@
 #include <linux/errno.h>
 #include <linux/of_device.h>
 #include <linux/usb/typec.h>
-
+#include <linux/interrupt.h>
 /* Driver-specific includes */
 #include "aw35615_global.h"
 #include "platform_helpers.h"
@@ -33,7 +33,15 @@
 
 #include "aw35615_driver.h"
 
-#define AW35615_DRIVER_VERSION		"V1.5.0"
+#define AW35615_DRIVER_VERSION		"V1.6.5"
+
+static struct aw_tcpm_ops_ptr aw_tcpm_ops_init;
+//+ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
+#ifdef CONFIG_QGKI_BUILD
+bool is_aw35615 = false;
+EXPORT_SYMBOL(is_aw35615);
+#endif
+//-ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
 
 /******************************************************************************
  * Driver functions
@@ -47,10 +55,7 @@ int aw35615_alert_status_clear(struct tcpc_device *tcpc, uint32_t mask)
 
 static int aw35615_tcpc_init(struct tcpc_device *tcpc, bool sw_reset)
 {
-	struct aw35615_chip* chip = aw35615_GetChip();
-
 	AW_LOG("enter\n");
-	schedule_delayed_work(&chip->init_delay_work, msecs_to_jiffies(0));
 	return 0;
 }
 
@@ -86,7 +91,41 @@ int aw35615_get_fault_status(struct tcpc_device *tcpc, uint8_t *status)
 
 static int aw35615_get_cc(struct tcpc_device *tcpc, int *cc1, int *cc2)
 {
+	struct aw35615_chip *chip = aw35615_GetChip();
+
 	AW_LOG("enter\n");
+
+	if (chip->port.sourceOrSink == SINK) {
+		if (chip->port.CCTerm == CCTypeRd3p0) {
+			if (chip->tcpc->typec_polarity) {
+				chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_OPEN;
+				chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_SNK_3_0;
+			} else {
+				chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_SNK_3_0;
+				chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_OPEN;
+			}
+		} else if (chip->port.CCTerm == CCTypeRdUSB) {
+			if (chip->tcpc->typec_polarity) {
+				chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_OPEN;
+				chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_SNK_DFT;
+			} else {
+				chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_SNK_DFT;
+				chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_OPEN;
+			}
+		}
+	} else if (chip->port.sourceOrSink == SOURCE) {
+		if (chip->tcpc->typec_polarity) {
+			chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_OPEN;
+			chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_RD;
+		} else {
+			chip->tcpc->typec_remote_cc[0] = TYPEC_CC_VOLT_RD;
+			chip->tcpc->typec_remote_cc[1] = TYPEC_CC_VOLT_OPEN;
+		}
+	} else {
+		chip->tcpc->typec_remote_cc[0] = TYPEC_CC_DRP_TOGGLING;
+		chip->tcpc->typec_remote_cc[1] = TYPEC_CC_DRP_TOGGLING;
+	}
+
 	return 0;
 }
 
@@ -189,6 +228,42 @@ static int aw35615_retransmit(struct tcpc_device *tcpc)
 	return 0;
 }
 
+//+ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
+#ifdef CONFIG_QGKI_BUILD
+void aw_retry_source_cap(int cur)
+{
+	struct aw35615_chip *chip = aw35615_GetChip();
+	int bak_cur;
+
+	chip->port.USBPDTxFlag = AW_TRUE;
+	chip->port.PDTransmitHeader.word = chip->port.src_cap_header.word;
+	bak_cur = chip->port.src_caps[0].FPDOSupply.MaxCurrent;
+	chip->port.src_caps[0].FPDOSupply.MaxCurrent = cur / 10;
+	pr_err("send source cap, cur=%d\n", cur);
+	if ((!chip->queued) && (chip->port.PolicyState == peSourceReady)) {
+		chip->queued = AW_TRUE;
+		queue_work(chip->highpri_wq, &chip->sm_worker);
+		usleep_range(4000, 5000);
+		pr_err("queue_work --> send source cap\n");
+		do {
+			if ((chip->port.PolicyState == peSourceSendSoftReset) ||
+					(chip->port.PolicyState == peSourceSendHardReset) ||
+					(chip->port.PolicyState == peSourceTransitionDefault) ||
+					(chip->port.PolicyState == peDisabled)) {
+				AW_LOG("source cap fail\n");
+				return;
+			}
+			usleep_range(500, 1000);
+		} while ((chip->port.PolicyState != peSourceReady) || (chip->queued == AW_TRUE));
+		return;
+	}
+
+	chip->port.src_caps[0].FPDOSupply.MaxCurrent = bak_cur;
+	return;
+}
+#endif
+//-ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
+
 static struct tcpc_ops aw35615_tcpc_ops = {
 	.init = aw35615_tcpc_init,
 	.alert_status_clear = aw35615_alert_status_clear,
@@ -260,6 +335,54 @@ static void aw35615_init_delay_work(struct work_struct *work)
 	AW_LOG("Core is initialized!\n");
 }
 
+static void aw35615_bist_work(struct work_struct *work)
+{
+	struct aw35615_chip *chip = aw35615_GetChip();
+	AW_U8 data_buf[3];
+
+	if (!chip) {
+		pr_err("AWINIC  %s - Chip structure is NULL!\n", __func__);
+		return;
+	}
+
+	if (chip->port.PolicyIsSource == 0) {
+		DeviceRead(&chip->port, regInterruptb, 2, &data_buf[0]);
+		DeviceRead(&chip->port, regInterrupt, 1, &data_buf[2]);
+		AW_LOG("regInterruptb = 0x%x regStatus0 = 0x%x regInterrupt = 0x%x\n", data_buf[0], data_buf[1], data_buf[2]);
+		if (data_buf[0] & 0x1) {
+			hrtimer_start(&chip->bist_timer, ktime_set(chip->source_end_timer / 1000, chip->source_end_timer * 1000000), HRTIMER_MODE_REL);
+			AW_LOG("go sink check\n");
+		} else {
+			AW_LOG("go sink set SDAC\n");
+			chip->port.Registers.Slice.byte = chip->sink_reg_bist;
+			DeviceWrite(&chip->port, regSlice, 1,	&chip->port.Registers.Slice.byte);
+		}
+	}
+
+	if (chip->port.PolicyIsSource == 1) {
+		chip->port.SOURCE_Flag_end = 1;
+		DeviceRead(&chip->port, regInterruptb, 2, &data_buf[0]);
+		DeviceRead(&chip->port, regInterrupt, 1, &data_buf[2]);
+		AW_LOG("regInterruptb = 0x%x regStatus0 = 0x%x regInterrupt = 0x%x\n", data_buf[0], data_buf[1], data_buf[2]);
+		if (data_buf[0] & 0x1) {
+			hrtimer_start(&chip->bist_timer, ktime_set(chip->source_end_timer / 1000, chip->source_end_timer * 1000000), HRTIMER_MODE_REL);
+			AW_LOG("go source check\n");
+		} else {
+			AW_LOG("go source set SDAC\n");
+			chip->port.Registers.Slice.byte = chip->source_reg_bist;
+			DeviceWrite(&chip->port, regSlice, 1,	&chip->port.Registers.Slice.byte);
+		}
+	}
+}
+
+static enum hrtimer_restart aw35615_bist_timer_func(struct hrtimer *p_hrtimer)
+{
+	struct aw35615_chip *chip = container_of(p_hrtimer, struct aw35615_chip, bist_timer);
+
+	schedule_work(&chip->bist_work);
+	return HRTIMER_NORESTART;
+}
+
 static int aw35615_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct aw35615_chip *chip;
@@ -303,6 +426,7 @@ static int aw35615_probe(struct i2c_client *client, const struct i2c_device_id *
 		return -EIO;
 	}
 
+	//cpu_latency_qos_add_request(&chip->pm_gos_request, PM_QOS_DEFAULT_VALUE);
 	aw35615_SetChip(chip);
 	/* Initialize the chip's data members */
 	aw_InitChipData();
@@ -350,8 +474,30 @@ static int aw35615_probe(struct i2c_client *client, const struct i2c_device_id *
 	AW_LOG(" DebugFS nodes created!\n");
 #endif // AW_DEBUG
 
+	INIT_WORK(&chip->bist_work, aw35615_bist_work);
+	hrtimer_init(&chip->bist_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	chip->bist_timer.function = aw35615_bist_timer_func;
+
 	/* delay init */
 	INIT_DELAYED_WORK(&chip->init_delay_work, aw35615_init_delay_work);
+	schedule_delayed_work(&chip->init_delay_work, msecs_to_jiffies(3000));
+
+	aw_tcpm_ops_init.get_pps_status = aw_get_pps_status;
+	aw_tcpm_ops_init.pd_get_status = aw_pd_get_status;
+	aw_tcpm_ops_init.request_pdo = aw_request_pdo;
+	aw_tcpm_ops_init.request_apdo = aw_request_apdo;
+	aw_tcpm_ops_init.get_power_cap = aw_get_power_cap;
+	aw_tcpm_ops_init.pd_pe_ready = aw_pd_pe_ready;
+	aw_tcpm_ops_init.get_source_apdo = aw_get_source_apdo;
+	aw_tcpm_ops_init.pd_connected = aw_pd_connected;
+	aw_tcpm_ops_init.request_dr_swap = aw_request_dr_swap;
+	aw_tcpm_ops_init.request_pr_swap = aw_request_pr_swap;
+	tcpm_set_aw_pps_ops(&aw_tcpm_ops_init);
+//+ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
+#ifdef CONFIG_QGKI_BUILD
+	is_aw35615 = true;
+#endif
+//-ReqP86801AA2-3327, liwei19.wt, add, 20240520, iphone smart switch need 5V 0A
 
 	AW_LOG(" AWINIC Driver loaded successfully!\n");
 
@@ -387,16 +533,21 @@ static void aw35615_shutdown(struct i2c_client *client)
 		return;
 	}
 
-	cancel_work_sync(&chip->sm_worker);
-	hrtimer_cancel(&chip->sm_timer);
-	aw_GPIO_Cleanup();
-
 	core_enable_typec(&chip->port, AW_FALSE);
+	if (chip->gpio_IntN_irq)
+		disable_irq(chip->gpio_IntN_irq);
+	cancel_work_sync(&chip->sm_worker);
+	//hrtimer_cancel(&chip->sm_timer);
+	alarm_cancel(&chip->alarmtimer);
+	aw_GPIO_Cleanup();
+	SetPEState(&chip->port, peDisabled);
+	SetTypeCState(&chip->port, Unattached);
+
 	ret = DeviceWrite(&chip->port, regControl3, length, &data);
 	if (ret < 0)
 		pr_err("send hardreset failed, ret = %d\n", ret);
 
-	SetStateUnattached(&chip->port);
+	//SetStateUnattached(&chip->port);
 
 	/* keep the cc open status 20ms */
 	mdelay(5);

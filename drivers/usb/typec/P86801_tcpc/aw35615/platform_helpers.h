@@ -229,6 +229,37 @@ void aw35615_init_event_handler(void);
 void stop_otg_vbus(void);
 AW_BOOL aw_set_pdo(AW_U16 obj_num, AW_U16 obj_cur);
 AW_BOOL aw_set_apdo(AW_U16 apdo_vol, AW_U16 apdo_cur);
+extern int aw_request_dr_swap(struct tcpc_device *tcpc, uint8_t role);
+extern int aw_request_pr_swap(struct tcpc_device *tcpc, uint8_t role);
+extern int aw_get_pps_status(struct tcpc_device *tcpc,
+		struct pd_pps_status *pps_status);
+extern int aw_pd_get_status(struct tcpc_device *tcpc,
+		struct pd_status *status);
+extern int aw_request_pdo(struct tcpc_device *tcpc,
+		AW_U16 pdo_vol, AW_U16 pdo_cur);
+extern int aw_request_apdo(struct tcpc_device *tcpc,
+		AW_U16 apdo_vol, AW_U16 apdo_cur);
+extern int aw_get_power_cap(struct tcpc_device *tcpc,
+		struct tcpm_remote_power_cap *remote_cap);
+extern int aw_pd_pe_ready(struct tcpc_device *tcpc);
+extern int aw_get_source_apdo(struct tcpc_device *tcpc,
+		AW_U8 apdo_type, AW_U8 *cap_i, struct tcpm_power_cap_val *cap_val);
+extern int aw_pd_connected(struct tcpc_device *tcpc);
+
+struct aw_tcpm_ops_ptr {
+	int (*get_pps_status)(struct tcpc_device *tcpc, struct pd_pps_status *pps_status);
+	int (*pd_get_status)(struct tcpc_device *tcpc, struct pd_status *status);
+	int (*request_pdo)(struct tcpc_device *tcpc, AW_U16 pdo_vol, AW_U16 pdo_cur);
+	int (*request_apdo)(struct tcpc_device *tcpc, AW_U16 apdo_vol, AW_U16 apdo_cur);
+	int (*get_power_cap)(struct tcpc_device *tcpc, struct tcpm_remote_power_cap *remote_cap);
+	int (*pd_pe_ready)(struct tcpc_device *tcpc);
+	int (*get_source_apdo)(struct tcpc_device *tcpc, AW_U8 apdo_type, AW_U8 *cap_i, struct tcpm_power_cap_val *cap_val);
+	int (*pd_connected)(struct tcpc_device *tcpc);
+	int (*request_dr_swap)(struct tcpc_device *tcpc, uint8_t role);
+	int (*request_pr_swap)(struct tcpc_device *tcpc, uint8_t role);
+};
+extern struct aw_tcpm_ops_ptr *aw_tcpm_ops;
+extern void tcpm_set_aw_pps_ops(struct aw_tcpm_ops_ptr *pps_ops);
 void stop_usb_host(struct aw35615_chip *chip);
 void start_usb_host(struct aw35615_chip *chip, bool ss);
 void stop_usb_peripheral(struct aw35615_chip *chip);

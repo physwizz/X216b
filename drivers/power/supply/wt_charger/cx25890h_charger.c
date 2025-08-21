@@ -58,6 +58,7 @@ static int cx25890h_get_hiz_mode(struct cx25890h_device *cx_chg, u8 *state);
 static int cx25890h_set_input_suspend(struct cx25890h_device *cx_chg, int suspend);
 static int cx25890h_set_charge_voltage(struct cx25890h_device *cx_chg, u32 uV);
 static int cx25890h_set_charge_current(struct cx25890h_device *cx_chg, int curr);
+static int cx25890h_enable_term(struct cx25890h_device *cx_chg, bool enable);
 int cx25890h_get_ibat_curr(struct cx25890h_device *cx_chg,  int *val);
 int cx25890h_get_vbat_volt(struct cx25890h_device *cx_chg,  int *val);
 static void cx25890h_dynamic_adjust_charge_voltage(struct cx25890h_device *cx_chg, int vbat);
@@ -447,6 +448,16 @@ static int cx25890h_set_otg(struct cx25890h_device *cx_chg, int enable)
 	return ret;
 }
 
+static int cx25890h_enable_batt_load(struct cx25890h_device *cx_chg)
+{
+	int ret =0;
+	u8 val = CX25890H_BAT_LOADEN_ENABLE << CX25890H_BAT_LOAEN_SHIFT;
+
+	ret = cx25890h_update_bits(cx_chg, CX25890H_REG_03, CX25890H_BAT_LOADEN_MASK, val);
+
+	return ret;
+}
+
 static int cx25890h_enable_charger(struct cx25890h_device *cx_chg)
 {
 	int ret =0;
@@ -633,6 +644,9 @@ static int cx25890h_enable_term(struct cx25890h_device *cx_chg, bool enable)
 	}
 
 	ret = cx25890h_update_bits(cx_chg, CX25890H_REG_07, CX25890H_EN_TERM_MASK, val);
+
+	if (ret < 0)
+		pr_err("failed ret (%d)\n", ret);
 
 	return ret;
 }
@@ -944,11 +958,12 @@ static int cx25890h_enable_qc20_hvdcp_9v(struct cx25890h_device *cx_chg)
         return ret;
 	msleep(100);
 
+	//+P240228-03997, liwei19.wt, add, 20240323, Insert 15w pd(EP-T1510) in poweroff state, the pd adapter will turn off the output 6~7s.
 	/* dp 3.3v and dm 0.6v out 9V */
-	dp_val = 0x6<<CX25890H_DP_VSET_SHIFT;
+	dp_val = 0x5<<CX25890H_DP_VSET_SHIFT;
 	ret = cx25890h_update_bits(cx_chg, CX25890H_REG_15,
-				  CX25890H_DP_VSET_MASK, dp_val); //dp 3.3v
-
+				  CX25890H_DP_VSET_MASK, dp_val); //dp 2.7v
+	//-P240228-03997, liwei19.wt, add, 20240323, Insert 15w pd(EP-T1510) in poweroff state, the pd adapter will turn off the output 6~7s.
 	if (ret)
 		return ret;
 
@@ -1577,7 +1592,7 @@ static int cx25890h_init_device(struct cx25890h_device *cx_chg)
 
 	cx25890h_init_charge(cx_chg);
 	/*common initialization*/
-	cx25890h_disable_watchdog_timer(cx_chg, 1);
+	cx25890h_disable_watchdog_timer(cx_chg, 1);
 	cx25890h_ship_mode_delay_enable(cx_chg, false);
 	cx25890h_set_otg(cx_chg, false);
 	cx25890h_set_input_suspend(cx_chg, false);
@@ -1587,6 +1602,7 @@ static int cx25890h_init_device(struct cx25890h_device *cx_chg)
 	cx25890h_jeita_enable(cx_chg, false);
 	cx25890h_enable_pumpx(cx_chg, true);
 	cx25890h_enable_battery_rst_en(cx_chg, false);
+	cx25890h_enable_batt_load(cx_chg);
 	cx_chg->cfg.disable_hvdcp=0;
 	ret = cx25890h_set_term_current(cx_chg, cx_chg->cfg.term_current);
 	if (ret < 0) {
@@ -1619,7 +1635,7 @@ static int cx25890h_init_device(struct cx25890h_device *cx_chg)
 
 	cx25890h_en_hvdcp(cx_chg, false);
 	cx25890h_set_input_current_limit(cx_chg, 500);
-	cx25890h_enable_term(cx_chg, true);
+	cx25890h_enable_term(cx_chg, false);
 	cx25890h_enable_safety_timer(cx_chg, true);
 	cx25890h_set_safety_timer(cx_chg, 20);
 	cx25890h_set_chg_enable(cx_chg, true);
@@ -2190,7 +2206,20 @@ ADAPTER_CHECK_END:
 
 }
 
+static void cx25890h_term_detect_workfunc(struct work_struct *work)
+{
+	struct cx25890h_device *cx_chg = container_of(work,
+								struct cx25890h_device, term_detect_work.work);
 
+	if (IS_ERR_OR_NULL(cx_chg)) {
+		pr_err("Can't get cx25890x_device\n");
+		return;
+	}
+
+	cx25890h_enable_term(cx_chg, true);
+	pr_err("enable_term\n");
+	cx25890h_dump_regs(cx_chg);
+}
 
 static void cx25890h_charger_irq_workfunc(struct work_struct *work)
 {
@@ -2247,6 +2276,8 @@ static void cx25890h_charger_irq_workfunc(struct work_struct *work)
 		}
 		cx25890h_set_chg_enable(cx_chg, true);
 		dev_err(cx_chg->dev, "cx25890h adapter/usb inserted\n");
+		schedule_delayed_work(&cx_chg->term_detect_work, msecs_to_jiffies(15000));
+		//cx25890h_dump_regs(cx_chg);
 	} else if (prev_vbus_gd && (!cx_chg->vbus_good)) {
 		cx_chg->vbus_type = CX25890H_VBUS_NONE;
 		cx_chg->apsd_rerun = false;
@@ -2257,6 +2288,10 @@ static void cx25890h_charger_irq_workfunc(struct work_struct *work)
 		cancel_delayed_work(&cx_chg->check_adapter_work);
 		cancel_delayed_work(&cx_chg->detect_work);
 		cancel_delayed_work(&cx_chg->monitor_work);
+		cancel_delayed_work(&cx_chg->term_detect_work);
+		cx25890h_enable_term(cx_chg, false);
+		pr_err("disable_term\n");
+		//cx25890h_dump_regs(cx_chg);
 
 		dev_err(cx_chg->dev, "cx25890h adapter/usb remove\n");
 		//charger_enable_device_mode(false);//PD USB start_usb_peripheral
@@ -2266,6 +2301,10 @@ static void cx25890h_charger_irq_workfunc(struct work_struct *work)
 
 	if ((!prev_pg) && cx_chg->vbus_good && cx_chg->usb_online) {
 		cx25890h_get_vbus_type(cx_chg);
+
+		cx25890h_set_charge_current(cx_chg, 128);
+		cx25890h_set_input_current_limit(cx_chg, 100);
+		msleep(1000);
 
 		if (cx_chg->vbus_type == CX25890H_VBUS_USB_DCP
 				|| cx_chg->vbus_type == CX25890H_VBUS_NONSTAND_1A
@@ -2823,6 +2862,7 @@ static int cx25890h_charger_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&cx_chg->monitor_work, cx25890h_monitor_workfunc);
 	INIT_DELAYED_WORK(&cx_chg->rerun_apsd_work, cx25890h_rerun_apsd_workfunc);
 	INIT_DELAYED_WORK(&cx_chg->detect_work, cx25890h_charger_detect_workfunc);
+	INIT_DELAYED_WORK(&cx_chg->term_detect_work, cx25890h_term_detect_workfunc);
 
 	ret = sysfs_create_group(&cx_chg->dev->kobj, &cx25890h_attr_group);
 	if (ret) {
@@ -2876,6 +2916,8 @@ static void cx25890h_charger_shutdown(struct i2c_client *client)
 {
 	struct cx25890h_device *cx_chg = i2c_get_clientdata(client);
 
+	if (cx_chg == NULL)
+		return;
 	dev_info(cx_chg->dev, "%s: shutdown\n", __func__);
 
 	//+bug 816469,tankaikun.wt,add,2023/1/30, IR compensation
@@ -2885,6 +2927,7 @@ static void cx25890h_charger_shutdown(struct i2c_client *client)
 	sysfs_remove_group(&cx_chg->dev->kobj, &cx25890h_attr_group);
 	cancel_delayed_work(&cx_chg->irq_work);
 	cancel_delayed_work_sync(&cx_chg->monitor_work);
+	cancel_delayed_work(&cx_chg->term_detect_work);
 
 	//free_irq(cx_chg->client->irq, NULL);
 	g_cx_chg = NULL;

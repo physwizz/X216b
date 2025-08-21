@@ -1454,7 +1454,8 @@ int himax_chip_common_probe(struct spi_device *spi)
 	}
 //+P86801AA1,wanwen2.wt,modify,2023/08/29,add lcm_name identify
 	if ((strcmp(Lcm_name_tp,"lide_hx83102j_wt_dsi_vdo_90hz_hsd") != 0) &&
-	(strcmp(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt") != 0)) {
+	(strcmp(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt") != 0) &&
+	(strcmp(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc") != 0)) {
 		I("Lcm_name_tp Match failed\n");
 		return -EIO;
 	}
@@ -1534,6 +1535,10 @@ int himax_chip_common_probe(struct spi_device *spi)
 		g_fw_boot_upgrade_name = "himax_hx83102j_fw_lide.bin";
 		g_fw_mp_upgrade_name = "himax_hx83102j_mp_lide.bin";
 		g_hx_panel_id = 1;
+	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt_agc")) {
+		g_fw_boot_upgrade_name = "himax_hx83102j_fw_starry_agc.bin";
+		g_fw_mp_upgrade_name = "himax_hx83102j_mp_starry_agc.bin";
+		g_hx_panel_id = 2;
 	} else if (strstr(Lcm_name_tp,"starry_hx83102j_wt_dsi_vdo_90hz_mdt")) {
 		g_fw_boot_upgrade_name = "himax_hx83102j_fw_starry.bin";
 		g_fw_mp_upgrade_name = "himax_hx83102j_mp_starry.bin";

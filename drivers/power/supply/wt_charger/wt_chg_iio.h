@@ -58,6 +58,7 @@ static const struct wtchg_iio_channels wtchg_iio_psy_channels[] = {
 //+ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
 	WTCHG_CHAN_ENERGY("wtchg_hv_disable_detect", PSY_IIO_HV_DISABLE_DETECT)
 //-ReqP86801AA1-3595, liyiying.wt, add, 20230801, Configure SEC_BAT_CURRENT_EVENT_HV_DISABLE
+	WTCHG_CHAN_ENERGY("pd_input_suspend", PSY_IIO_PD_INPUT_SUSPEND)
 };
 
 enum batt_qg_exit_iio_channels {

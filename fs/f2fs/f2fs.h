@@ -3433,6 +3433,8 @@ enum F2FS_SEC_FUA_MODE {
 	F2FS_SEC_FUA_NONE = 0,
 	F2FS_SEC_FUA_ROOT,
 	F2FS_SEC_FUA_DIR,
+	F2FS_SEC_FUA_NODE,
+	F2FS_SEC_FUA_ALL,
 
 	NR_F2FS_SEC_FUA_MODE,
 };
@@ -3463,6 +3465,12 @@ static inline void f2fs_cond_set_fua(struct f2fs_io_info *fio)
 			((fio->type == NODE && !__f2fs_is_cold_node(page)) ||
 			 (fio->type == DATA && S_ISDIR(inode->i_mode))))
 		fio->op_flags |= REQ_FUA;
+	else if (fio->sbi->s_sec_cond_fua_mode == F2FS_SEC_FUA_NODE &&
+			(fio->type == NODE || (fio->type == DATA && S_ISDIR(inode->i_mode))))
+		fio->op_flags |= REQ_FUA;
+	else if (fio->sbi->s_sec_cond_fua_mode == F2FS_SEC_FUA_ALL)
+		fio->op_flags |= REQ_FUA;
+
 	// Directory Inode or Indirect Node -> COLD_BIT X
 	// ref. set_cold_node()
 

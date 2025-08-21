@@ -141,8 +141,14 @@
 #define FCC_100_MA	100
 #define FCC_0_MA	0
 
-#define BATT_NORMAL_CV		4400
+//+P240307-04695, liwei19.wt, modify, 20240319, New requirements for one ui 6.1 charging protection.
+#define BATT_NORMAL_CV		4380
 #define BATT_HIGH_TEMP_CV	4200
+#define BATT_BASIC_VRECHG	250000
+
+#define BATT_NORMAL_SOC_RECHG	98
+#define BATT_BASIC_SOC_RECHG	95
+//-P240307-04695, liwei19.wt, modify, 20240319, New requirements for one ui 6.1 charging protection.
 
 #define DEFAULT_HVDCP_VOLT 5000
 
@@ -190,6 +196,66 @@
 #define DYNAMIC_UPDATE_WIRELESS_FOD_CAPACITY 95
 
 #define SHUTDOWN_CNT_CHECK_VBAT	3
+
+//+P86801EA2-279 liwei19.wt,add.20240308,modify quiet thermal
+#ifdef CONFIG_AMERICA_VERSION
+#define NA_BOARD_THERMAL_ENGINE_PROP "na-board-thermal-engine-fchg-table"
+#endif
+//-P86801EA2-279 liwei19.wt,add.20240308,modify quiet thermal
+
+//P240228-03997,liwei19.wt,modify,2024/03/13,slove that low battery charge mode with pd TA will reboot
+#ifdef CONFIG_QGKI_BUILD
+#define WT_PROBE_TIME_MAX 25  //s
+#endif
+
+#define WT_OPTIMIZE_USING_UI_TIME
+
+/*batt_charging_source*/
+#define SEC_BATTERY_CABLE_UNKNOWN                0
+#define SEC_BATTERY_CABLE_NONE                   1
+#define SEC_BATTERY_CABLE_PREPARE_TA             2
+#define SEC_BATTERY_CABLE_TA                     3
+#define SEC_BATTERY_CABLE_USB                    4
+#define SEC_BATTERY_CABLE_USB_CDP                5
+#define SEC_BATTERY_CABLE_9V_TA                  6
+#define SEC_BATTERY_CABLE_9V_ERR                 7
+#define SEC_BATTERY_CABLE_9V_UNKNOWN             8
+#define SEC_BATTERY_CABLE_12V_TA                 9
+#define SEC_BATTERY_CABLE_WIRELESS               10
+#define SEC_BATTERY_CABLE_HV_WIRELESS            11
+#define SEC_BATTERY_CABLE_PMA_WIRELESS           12
+#define SEC_BATTERY_CABLE_WIRELESS_PACK          13
+#define SEC_BATTERY_CABLE_WIRELESS_HV_PACK       14
+#define SEC_BATTERY_CABLE_WIRELESS_STAND         15
+#define SEC_BATTERY_CABLE_WIRELESS_HV_STAND      16
+#define SEC_BATTERY_CABLE_QC20                   17
+#define SEC_BATTERY_CABLE_QC30                   18
+#define SEC_BATTERY_CABLE_PDIC                   19
+#define SEC_BATTERY_CABLE_UARTOFF                20
+#define SEC_BATTERY_CABLE_OTG                    21
+#define SEC_BATTERY_CABLE_LAN_HUB                22
+#define SEC_BATTERY_CABLE_POWER_SHARING          23
+#define SEC_BATTERY_CABLE_HMT_CONNECTED          24
+#define SEC_BATTERY_CABLE_HMT_CHARGE             25
+#define SEC_BATTERY_CABLE_HV_TA_CHG_LIMIT        26
+#define SEC_BATTERY_CABLE_WIRELESS_VEHICLE       27
+#define SEC_BATTERY_CABLE_WIRELESS_HV_VEHICLE    28
+#define SEC_BATTERY_CABLE_PREPARE_WIRELESS_HV    29
+#define SEC_BATTERY_CABLE_TIMEOUT                30
+#define SEC_BATTERY_CABLE_SMART_OTG              31
+#define SEC_BATTERY_CABLE_SMART_NOTG             32
+#define SEC_BATTERY_CABLE_WIRELESS_TX            33
+#define SEC_BATTERY_CABLE_HV_WIRELESS_20         34
+#define SEC_BATTERY_CABLE_HV_WIRELESS_20_LIMIT   35
+#define SEC_BATTERY_CABLE_WIRELESS_FAKE          36
+#define SEC_BATTERY_CABLE_PREPARE_WIRELESS_20    37
+#define SEC_BATTERY_CABLE_PDIC_APDO              38
+#define SEC_BATTERY_CABLE_POGO                   39
+#define SEC_BATTERY_CABLE_POGO_9V                40
+#define SEC_BATTERY_CABLE_FPDO_DC                41
+#define SEC_BATTERY_CABLE_MAX                    42
+//-S98901AA1-12619, liwei19@wt, add 20240822, batt_charging_source
+
 
 enum batt_jeita_status {
 	BATT_TEMP_COLD = 0,
@@ -271,6 +337,45 @@ typedef enum{
 	CHRG_STATE_TAPER,
 	CHRG_STATE_FULL,
 } wtchg_state;
+
+//+P240228-03997,liwei19.wt,modify,2024/03/13,slove that low battery charge mode with pd TA will reboot
+#ifdef CONFIG_QGKI_BUILD
+enum wt_probe_status {
+  WT_PROBE_STATUS_START = 0,
+  WT_PROBE_STATUS_TIMEOUT,
+  WT_PROBE_STATUS_UNKNOW,
+};
+#endif
+//-P240228-03997,liwei19.wt,modify,2024/03/13,slove that low battery charge mode with pd TA will reboot
+
+enum current_level_enum {
+	CURRENT_LEVEL_NONE = 0,
+	CURRENT_LEVEL1,
+	CURRENT_LEVEL2,
+	CURRENT_LEVEL3,
+	CURRENT_LEVEL4,
+	CURRENT_LEVEL5,
+	CURRENT_LEVEL6,
+	CURRENT_LEVEL7,
+	CURRENT_LEVEL_MAX
+};
+
+enum calculate_time_state_enum {
+	CALCULATE_NONE_STATE = 0,
+	CALCULATE_INIT_STATE,
+	CALCULATE_CHARGING_STATE,
+	CALCULATE_FULL_STATE,
+	CALCULATE_PLUG_OUT_STATE,
+	CALCULATE_INVALID_STATE,
+	CALCULATE_STATEL_MAX
+};
+
+enum compensation_state_enum {
+	COMPENSATION_LEVEL_REDUCE_NORMAL = 0,
+	COMPENSATION_LEVEL_REDUCE_QUICK,
+	COMPENSATION_LEVEL_REDUCE_SLOW,
+	COMPENSATION_LEVEL_MAX
+};
 
 struct wtchg_wakeup_source {
 	struct wakeup_source	*source;
@@ -372,6 +477,10 @@ struct wt_chg {
 
 	int batt_cv_max;
 	int jeita_batt_cv;
+	//+P240307-04695, liwei19.wt, add, 20240319, New requirements for one ui 6.1 charging protection.
+	int wt_batt_cv;
+	int batt_soc_rechg;
+	//-P240307-04695, liwei19.wt, add, 20240319, New requirements for one ui 6.1 charging protection.
 	int jeita_batt_cv_pre;
 
 	int batt_fcc_max;
@@ -483,6 +592,7 @@ struct wt_chg {
 
 	//bug792983, tankaikun@wt, add 20220831, fix device recharge but no charging icon
 	int eoc_reported;
+	int is_soc_100_in_charging;
 
 	//+bug761884, tankaikun@wt, add 20220831, fix iic read/write return -13 when system suspend
 	struct alarm wtchg_alarm;
@@ -510,6 +620,10 @@ struct wt_chg {
 
 	int shutdown_cnt;
 	bool shutdown_check_ok;
+	//P240228-03997,liwei19.wt,modify,2024/03/13,slove that low battery charge mode with pd TA will reboot
+	struct timespec probe_begin_time;
+	bool is_wt_src_5v_0A;
+	bool disable_quick_charge;
 };
 
 MODULE_LICENSE("GPL v2");

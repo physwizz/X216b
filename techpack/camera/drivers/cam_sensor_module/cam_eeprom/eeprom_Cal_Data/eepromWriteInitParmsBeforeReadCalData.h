@@ -7,6 +7,7 @@
 #define w11_c8496_rear_st_i2c_slave_addr 0x6C
 #define w11_hi556_front_lianyi_i2c_slave_addr 0x50
 #define w11_gc08a3_rear_cxt_i2c_slave_addr 0x62
+#define w11_gc05a2_front_cxt_i2c_slave_addr 0x6e
 
 #define w11_c5590_front_txd_i2c_slave_addr 0x20
 #define w11_c5590_front_txd_sensor_id_addr 0x0000
@@ -23,6 +24,7 @@
 #define W11_C5590_OTP_DATA_LEN   0x1525
 #define W11_SC520CS_OTP_DATA_LEN   0x1525
 #define W11_GC08A3_OTP_DATA_LEN   0x153b
+#define W11_GC05A2_OTP_DATA_LEN   0x1525
 
 #define SUCCESSRESULT 0
 #define FAILEESULT   -1

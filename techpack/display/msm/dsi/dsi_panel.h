@@ -274,6 +274,7 @@ struct dsi_panel {
 	bool hx83102_flag;
 	bool icnl9951r_flag;
 	bool ft8203_dsbj_flag;
+	bool jd9366ts_csot_flag;
 	/*-P86801AA1, wangcong.wt, ADD, 2023/08/28, add lcm ic flag*/
 };
 

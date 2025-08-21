@@ -58,6 +58,9 @@ static const struct {
 #define map_key_clear(c)	hid_map_usage_clear(hidinput, usage, &bit, \
 		&max, EV_KEY, (c))
 
+bool kbd_genuine = false;
+EXPORT_SYMBOL_GPL(kbd_genuine);
+
 static bool match_scancode(struct hid_usage *usage,
 			   unsigned int cur_idx, unsigned int scancode)
 {
@@ -161,6 +164,9 @@ static int hidinput_setkeycode(struct input_dev *dev,
 		*old_keycode = usage->type == EV_KEY ?
 				usage->code : KEY_RESERVED;
 		usage->code = ke->keycode;
+
+		if (usage->code > KEY_MAX || *old_keycode > KEY_MAX)
+			return -EINVAL;
 
 		clear_bit(*old_keycode, dev->keybit);
 		set_bit(usage->code, dev->keybit);
@@ -1706,9 +1712,6 @@ static struct hid_input *hidinput_allocate(struct hid_device *hid,
 		switch (application) {
 		case HID_GD_KEYBOARD:
 			suffix = "Keyboard";
-			if (hid->vendor == I2C_VENDOR_ID_KBD && hid->product == I2C_PRODUCT_ID_KBD) {
-				suffix = "book cover keyboard(EF-DX211)";
-			}
 			break;
 		case HID_GD_KEYPAD:
 			suffix = "Keypad";
@@ -1747,8 +1750,13 @@ static struct hid_input *hidinput_allocate(struct hid_device *hid,
 		suffix_len = strlen(suffix);
 		if ((name_len < suffix_len) ||
 		    strcmp(hid->name + name_len - suffix_len, suffix)) {
-			hidinput->name = kasprintf(GFP_KERNEL, "%s %s",
-						   hid->name, suffix);
+			if (kbd_genuine) {
+				hidinput->name = kasprintf(GFP_KERNEL, "%s",
+							hid->name);
+			} else {
+				hidinput->name = kasprintf(GFP_KERNEL, "%s %s",
+							hid->name, suffix);
+			}
 			if (!hidinput->name)
 				goto fail;
 		}

@@ -58,6 +58,16 @@ static const char * const wtchg_iio_chan_name[] = {
 	[WTCHG_VBUS_VAL_NOW] = "wtchg_vbus_val_now",
 };
 
+//+P86801AA2-3236, liwei.wt, add, 20240401, get vbus from pmic iio
+enum pmic_iio_channels {
+	VBUS_VOLTAGE,
+};
+
+static const char * const pmic_iio_chan_name[] = {
+	[VBUS_VOLTAGE] = "vbus_dect",
+};
+//-P86801AA2-3236, liwei.wt, add, 20240401, get vbus from pmic iio
+
 MODULE_LICENSE("GPL v2");
 
 #endif
